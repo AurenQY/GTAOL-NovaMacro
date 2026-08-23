@@ -10,4 +10,8 @@
     <ProjectReference Include="..\NovaMacro.Core\NovaMacro.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="NovaMacro.Tests" />
+  </ItemGroup>
+
 </Project>

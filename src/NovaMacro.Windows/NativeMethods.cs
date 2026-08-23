@@ -13,6 +13,48 @@ internal static class NativeMethods
         [In] Input[] inputs,
         int inputSize);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool RegisterHotKey(
+        nint windowHandle,
+        int id,
+        uint modifiers,
+        uint virtualKey);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnregisterHotKey(nint windowHandle, int id);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern int GetMessage(
+        out Message message,
+        nint windowHandle,
+        uint minimumMessage,
+        uint maximumMessage);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool PeekMessage(
+        out Message message,
+        nint windowHandle,
+        uint minimumMessage,
+        uint maximumMessage,
+        uint removeMessage);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool PostThreadMessage(
+        uint threadId,
+        uint message,
+        nuint wParam,
+        nint lParam);
+
+    [DllImport("user32.dll")]
+    internal static extern short GetAsyncKeyState(int virtualKey);
+
+    [DllImport("kernel32.dll")]
+    internal static extern uint GetCurrentThreadId();
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct Input
     {
@@ -60,5 +102,24 @@ internal static class NativeMethods
         internal uint Message;
         internal ushort ParameterLow;
         internal ushort ParameterHigh;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Message
+    {
+        internal nint WindowHandle;
+        internal uint Id;
+        internal nuint WParam;
+        internal nint LParam;
+        internal uint Time;
+        internal Point Point;
+        internal uint Private;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Point
+    {
+        internal int X;
+        internal int Y;
     }
 }

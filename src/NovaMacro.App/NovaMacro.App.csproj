@@ -13,4 +13,8 @@
     <ProjectReference Include="..\NovaMacro.Windows\NovaMacro.Windows.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="NovaMacro.Tests" />
+  </ItemGroup>
+
 </Project>

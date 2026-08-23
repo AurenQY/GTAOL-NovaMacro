@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\NovaMacro.App\NovaMacro.App.csproj" />
     <ProjectReference Include="..\..\src\NovaMacro.Core\NovaMacro.Core.csproj" />
     <ProjectReference Include="..\..\src\NovaMacro.Windows\NovaMacro.Windows.csproj" />
   </ItemGroup>

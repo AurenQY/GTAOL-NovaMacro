@@ -5,6 +5,7 @@ namespace NovaMacro.Windows;
 internal static class NativeMethods
 {
     internal const uint InputKeyboard = 1;
+    internal const uint KeyEventExtendedKey = 0x0001;
     internal const uint KeyEventKeyUp = 0x0002;
 
     [DllImport("user32.dll", SetLastError = true)]

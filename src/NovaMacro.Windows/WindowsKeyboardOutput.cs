@@ -6,6 +6,19 @@ namespace NovaMacro.Windows;
 
 public sealed class WindowsKeyboardOutput : IKeyboardOutput
 {
+    private readonly IKeyboardInputNativeApi _nativeApi;
+
+    public WindowsKeyboardOutput()
+        : this(new Win32KeyboardInputNativeApi())
+    {
+    }
+
+    internal WindowsKeyboardOutput(IKeyboardInputNativeApi nativeApi)
+    {
+        ArgumentNullException.ThrowIfNull(nativeApi);
+        _nativeApi = nativeApi;
+    }
+
     public void KeyDown(KeyboardKey key)
     {
         SendKeyboardInput(key, isKeyUp: false);
@@ -16,10 +29,17 @@ public sealed class WindowsKeyboardOutput : IKeyboardOutput
         SendKeyboardInput(key, isKeyUp: true);
     }
 
-    private static void SendKeyboardInput(KeyboardKey key, bool isKeyUp)
+    private void SendKeyboardInput(KeyboardKey key, bool isKeyUp)
     {
-        ushort virtualKey = ToVirtualKey(key);
-        uint flags = isKeyUp ? NativeMethods.KeyEventKeyUp : 0;
+        KeyboardOutputKeyMapping mapping = KeyboardOutputKeyMapper.Map(key);
+        uint flags = mapping.IsExtended
+            ? NativeMethods.KeyEventExtendedKey
+            : 0;
+
+        if (isKeyUp)
+        {
+            flags |= NativeMethods.KeyEventKeyUp;
+        }
 
         var inputs = new NativeMethods.Input[]
         {
@@ -30,41 +50,25 @@ public sealed class WindowsKeyboardOutput : IKeyboardOutput
                 {
                     Keyboard = new NativeMethods.KeyboardInput
                     {
-                        VirtualKey = virtualKey,
+                        VirtualKey = mapping.VirtualKey,
                         Flags = flags
                     }
                 }
             }
         };
 
-        uint insertedInputCount = NativeMethods.SendInput(
-            (uint)inputs.Length,
+        KeyboardInputNativeResult result = _nativeApi.SendInput(
             inputs,
             Marshal.SizeOf<NativeMethods.Input>());
 
-        if (insertedInputCount != inputs.Length)
+        if (result.InsertedCount != inputs.Length)
         {
-            int errorCode = Marshal.GetLastWin32Error();
             string action = isKeyUp ? "up" : "down";
 
             throw new Win32Exception(
-                errorCode,
+                result.ErrorCode,
                 $"SendInput did not insert the requested key-{action} event " +
-                $"for '{key}'. Native error code: {errorCode}.");
+                $"for '{key}'. Native error code: {result.ErrorCode}.");
         }
-    }
-
-    private static ushort ToVirtualKey(KeyboardKey key)
-    {
-        return key switch
-        {
-            KeyboardKey.A => 0x41,
-            KeyboardKey.B => 0x42,
-            KeyboardKey.C => 0x43,
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(key),
-                key,
-                "The keyboard key is not supported by the Windows adapter.")
-        };
     }
 }

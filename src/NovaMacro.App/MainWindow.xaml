@@ -21,6 +21,7 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <StackPanel>
@@ -232,10 +233,31 @@
             </StackPanel>
         </Border>
 
-        <TextBlock Grid.Row="4"
+        <Grid Grid.Row="4"
+              Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="SaveButton"
+                    MinWidth="100"
+                    Padding="14,7"
+                    Click="Save_Click"
+                    Content="Save"
+                    IsEnabled="False" />
+            <TextBlock x:Name="SaveStatusText"
+                       Grid.Column="1"
+                       Margin="14,0,0,0"
+                       VerticalAlignment="Center"
+                       TextWrapping="Wrap"
+                       Visibility="Collapsed" />
+        </Grid>
+
+        <TextBlock Grid.Row="5"
                    Margin="0,14,0,0"
                    Foreground="DimGray"
-                   Text="Editing only. Save and runtime apply are added in the next milestone."
+                   Text="Save writes this configuration to disk. Changes are not applied to the currently running macro yet. Startup loading is added in the next milestone."
                    TextWrapping="Wrap" />
     </Grid>
 </Window>

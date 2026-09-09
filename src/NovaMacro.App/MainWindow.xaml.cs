@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using NovaMacro.App.Configuration;
+using NovaMacro.App.Configuration.Storage;
 using NovaMacro.App.Editor;
 using NovaMacro.Core;
 using NovaMacro.Windows;
@@ -10,10 +11,14 @@ namespace NovaMacro.App;
 
 public partial class MainWindow : Window
 {
+    private readonly MacroEditorSaveCoordinator _saveCoordinator;
     private readonly MacroEditorDraft _draft;
 
-    public MainWindow()
+    internal MainWindow(MacroEditorSaveCoordinator saveCoordinator)
     {
+        ArgumentNullException.ThrowIfNull(saveCoordinator);
+
+        _saveCoordinator = saveCoordinator;
         HotkeyKeys = Array.AsReadOnly(Enum.GetValues<HotkeyKey>());
         OutputKeys = Array.AsReadOnly(Enum.GetValues<KeyboardKey>());
 
@@ -66,21 +71,50 @@ public partial class MainWindow : Window
 
     private void OnDraftChanged(object? sender, EventArgs e)
     {
+        ClearSaveStatus();
         RefreshValidation();
     }
 
     private void RefreshValidation()
     {
-        if (!_draft.TryCreateCandidate(
-                out ApplicationSettingsCandidate? candidate,
-                out IReadOnlyList<EditorParseError> parseErrors))
-        {
-            ShowValidationErrors(parseErrors.Select(error => error.Message));
-            return;
-        }
+        ShowValidation(_saveCoordinator.Validate(_draft));
+    }
 
-        ConfigurationValidationResult validationResult =
-            ConfigurationValidator.Validate(candidate!);
+    private void Save_Click(object sender, RoutedEventArgs e)
+    {
+        MacroEditorSaveResult saveResult = _saveCoordinator.Save(_draft);
+
+        ShowValidation(saveResult.Validation);
+
+        switch (saveResult.Status)
+        {
+            case MacroEditorSaveStatus.Saved:
+                ShowSaveStatus(
+                    "Saved to disk. Current runtime is unchanged.\n" +
+                    _saveCoordinator.SettingsPath,
+                    Brushes.ForestGreen);
+                break;
+
+            case MacroEditorSaveStatus.Invalid:
+                ClearSaveStatus();
+                break;
+
+            case MacroEditorSaveStatus.StorageFailed:
+                SettingsStorageError error = saveResult.StorageError!;
+                ShowSaveStatus(
+                    $"Save failed: {error.Message}\n{error.Path}",
+                    Brushes.Firebrick);
+                break;
+
+            default:
+                throw new InvalidOperationException(
+                    $"Unsupported save status '{saveResult.Status}'.");
+        }
+    }
+
+    private void ShowValidation(MacroEditorValidationResult validationResult)
+    {
+        SaveButton.IsEnabled = validationResult.IsValid;
 
         if (validationResult.IsValid)
         {
@@ -92,7 +126,7 @@ public partial class MainWindow : Window
         }
 
         ShowValidationErrors(
-            validationResult.Errors.Select(error => error.Message));
+            validationResult.ErrorMessages);
     }
 
     private void ShowValidationErrors(IEnumerable<string> messages)
@@ -101,6 +135,19 @@ public partial class MainWindow : Window
         ValidationStatusText.Foreground = Brushes.Firebrick;
         ValidationErrorsList.ItemsSource = messages.ToArray();
         ValidationErrorsList.Visibility = Visibility.Visible;
+    }
+
+    private void ShowSaveStatus(string message, Brush foreground)
+    {
+        SaveStatusText.Text = message;
+        SaveStatusText.Foreground = foreground;
+        SaveStatusText.Visibility = Visibility.Visible;
+    }
+
+    private void ClearSaveStatus()
+    {
+        SaveStatusText.Text = string.Empty;
+        SaveStatusText.Visibility = Visibility.Collapsed;
     }
 
     private static MacroStepEditorDraft? GetStepFromButton(object sender)

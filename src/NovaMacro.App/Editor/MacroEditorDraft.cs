@@ -277,6 +277,24 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
         return true;
     }
 
+    internal MacroEditorValidationResult Validate()
+    {
+        if (!TryCreateCandidate(
+                out ApplicationSettingsCandidate? candidate,
+                out IReadOnlyList<EditorParseError> parseErrors))
+        {
+            return MacroEditorValidationResult.InvalidParse(parseErrors);
+        }
+
+        ConfigurationValidationResult configurationResult =
+            ConfigurationValidator.Validate(candidate!);
+
+        return configurationResult.IsValid
+            ? MacroEditorValidationResult.Valid(configurationResult.Settings!)
+            : MacroEditorValidationResult.InvalidConfiguration(
+                configurationResult.Errors);
+    }
+
     private static bool TryParseDelay(string text, out TimeSpan duration)
     {
         duration = default;

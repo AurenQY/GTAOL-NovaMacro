@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
+using NovaMacro.App.Configuration.Storage;
+using NovaMacro.App.Editor;
 using NovaMacro.Core;
 using NovaMacro.Windows;
 
@@ -34,6 +36,10 @@ public partial class App : Application
 
         try
         {
+            var settingsStore = new JsonSettingsStore();
+            var editorSaveCoordinator =
+                new MacroEditorSaveCoordinator(settingsStore);
+
             var keyboardOutput = new WindowsKeyboardOutput();
             var delay = new TaskDelay();
             var macroRunner = new MacroRunner(keyboardOutput, delay);
@@ -52,7 +58,7 @@ public partial class App : Application
             _coordinator = coordinator;
             coordinator = null;
 
-            var mainWindow = new MainWindow();
+            var mainWindow = new MainWindow(editorSaveCoordinator);
             MainWindow = mainWindow;
             mainWindow.Show();
         }

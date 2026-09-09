@@ -5,25 +5,237 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="NovaMacro"
-        Height="260"
-        Width="460"
-        MinHeight="240"
-        MinWidth="420"
+        Height="700"
+        Width="820"
+        MinHeight="560"
+        MinWidth="680"
         WindowStartupLocation="CenterScreen">
-    <Grid Margin="32">
-        <StackPanel VerticalAlignment="Center">
-            <TextBlock FontSize="24"
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </Window.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock FontSize="26"
                        FontWeight="SemiBold"
-                       Text="Technical test mode" />
-            <TextBlock Margin="0,20,0,0"
-                       FontSize="18"
-                       FontWeight="SemiBold"
-                       Text="F8 → ABC test macro" />
-            <TextBlock Margin="0,12,0,0"
-                       FontSize="14"
+                       Text="NovaMacro" />
+            <TextBlock Margin="0,4,0,0"
                        Foreground="DimGray"
-                       Text="Focus the target window before pressing F8."
-                       TextWrapping="Wrap" />
+                       Text="Single-macro editor" />
         </StackPanel>
+
+        <Border Grid.Row="1"
+                Margin="0,20,0,0"
+                Padding="16"
+                BorderBrush="#D0D0D0"
+                BorderThickness="1"
+                CornerRadius="4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Text="Macro name" />
+                <TextBox Grid.Column="1"
+                         MinWidth="260"
+                         Padding="7,5"
+                         Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                <TextBlock Grid.Row="1"
+                           Margin="0,16,0,0"
+                           VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Text="Hotkey" />
+                <StackPanel Grid.Row="1"
+                            Grid.Column="1"
+                            Margin="0,16,0,0"
+                            Orientation="Horizontal">
+                    <ComboBox Width="110"
+                              Padding="5,3"
+                              ItemsSource="{Binding HotkeyKeys, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                              SelectedItem="{Binding HotkeyKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <CheckBox Margin="20,0,0,0"
+                              VerticalAlignment="Center"
+                              Content="Ctrl"
+                              IsChecked="{Binding Control, Mode=TwoWay}" />
+                    <CheckBox Margin="16,0,0,0"
+                              VerticalAlignment="Center"
+                              Content="Alt"
+                              IsChecked="{Binding Alt, Mode=TwoWay}" />
+                    <CheckBox Margin="16,0,0,0"
+                              VerticalAlignment="Center"
+                              Content="Shift"
+                              IsChecked="{Binding Shift, Mode=TwoWay}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2"
+                Margin="0,16,0,0"
+                Padding="16"
+                BorderBrush="#D0D0D0"
+                BorderThickness="1"
+                CornerRadius="4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock FontSize="17"
+                           FontWeight="SemiBold"
+                           Text="Macro steps" />
+
+                <Grid Grid.Row="1" Margin="0,12,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="42" />
+                        <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="64" />
+                        <ColumnDefinition Width="70" />
+                        <ColumnDefinition Width="76" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Foreground="DimGray" Text="#" />
+                    <TextBlock Grid.Column="1" Foreground="DimGray" Text="Type" />
+                    <TextBlock Grid.Column="2" Foreground="DimGray" Text="Value" />
+                    <TextBlock Grid.Column="3" Foreground="DimGray" Text="Order" />
+                </Grid>
+
+                <Border Grid.Row="2"
+                        BorderBrush="#E2E2E2"
+                        BorderThickness="1">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Steps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="8"
+                                            BorderBrush="#E8E8E8"
+                                            BorderThickness="0,0,0,1">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="34" />
+                                                <ColumnDefinition Width="90" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="64" />
+                                                <ColumnDefinition Width="70" />
+                                                <ColumnDefinition Width="76" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock VerticalAlignment="Center"
+                                                       Text="{Binding Position}" />
+                                            <TextBlock Grid.Column="1"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding TypeLabel}" />
+
+                                            <Grid Grid.Column="2" Margin="0,0,12,0">
+                                                <ComboBox MinWidth="150"
+                                                          HorizontalAlignment="Left"
+                                                          Padding="5,3"
+                                                          ItemsSource="{Binding OutputKeys, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                          SelectedItem="{Binding Key, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          Visibility="{Binding IsKeyTap, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <StackPanel Orientation="Horizontal"
+                                                            Visibility="{Binding IsDelay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBox Width="130"
+                                                             Padding="6,4"
+                                                             Text="{Binding MillisecondsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBlock Margin="8,0,0,0"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="DimGray"
+                                                               Text="ms" />
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <Button Grid.Column="3"
+                                                    Margin="0,0,6,0"
+                                                    Padding="7,4"
+                                                    Click="MoveStepUp_Click"
+                                                    Content="Up"
+                                                    IsEnabled="{Binding CanMoveUp}"
+                                                    Tag="{Binding}" />
+                                            <Button Grid.Column="4"
+                                                    Margin="0,0,6,0"
+                                                    Padding="7,4"
+                                                    Click="MoveStepDown_Click"
+                                                    Content="Down"
+                                                    IsEnabled="{Binding CanMoveDown}"
+                                                    Tag="{Binding}" />
+                                            <Button Grid.Column="5"
+                                                    Padding="7,4"
+                                                    Click="RemoveStep_Click"
+                                                    Content="Remove"
+                                                    Tag="{Binding}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <StackPanel Grid.Row="3"
+                            Margin="0,12,0,0"
+                            Orientation="Horizontal">
+                    <Button MinWidth="100"
+                            Padding="10,6"
+                            Click="AddKeyTap_Click"
+                            Content="+ Key Tap" />
+                    <Button MinWidth="100"
+                            Margin="10,0,0,0"
+                            Padding="10,6"
+                            Click="AddDelay_Click"
+                            Content="+ Delay" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="3"
+                Margin="0,16,0,0"
+                Padding="14"
+                Background="#F7F7F7"
+                BorderBrush="#D0D0D0"
+                BorderThickness="1"
+                CornerRadius="4">
+            <StackPanel>
+                <TextBlock x:Name="ValidationStatusText"
+                           FontWeight="SemiBold" />
+                <ScrollViewer MaxHeight="110"
+                              Margin="0,8,0,0"
+                              VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="ValidationErrorsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Margin="0,2,0,0"
+                                           Text="{Binding StringFormat=• {0}}"
+                                           TextWrapping="Wrap" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="4"
+                   Margin="0,14,0,0"
+                   Foreground="DimGray"
+                   Text="Editing only. Save and runtime apply are added in the next milestone."
+                   TextWrapping="Wrap" />
     </Grid>
 </Window>

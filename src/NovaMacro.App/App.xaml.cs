@@ -8,10 +8,26 @@ namespace NovaMacro.App;
 public partial class App : Application
 {
     private MacroHotkeyCoordinator? _coordinator;
+    private SingleInstanceGuard? _instanceGuard;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        if (!SingleInstanceGuard.TryAcquire(
+                out SingleInstanceGuard? instanceGuard))
+        {
+            MessageBox.Show(
+                "NovaMacro is already running.",
+                "NovaMacro",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+
+            Shutdown(-1);
+            return;
+        }
+
+        _instanceGuard = instanceGuard;
 
         WindowsGlobalHotkeyService? hotkeyService = null;
         MacroHotkeyCoordinator? coordinator = null;
@@ -74,7 +90,28 @@ public partial class App : Application
         finally
         {
             _coordinator = null;
+        }
+
+        try
+        {
             base.OnExit(e);
+        }
+        finally
+        {
+            try
+            {
+                _instanceGuard?.Dispose();
+            }
+            catch (Exception exception)
+            {
+                Trace.TraceError(
+                    "NovaMacro single-instance cleanup failed: {0}",
+                    exception);
+            }
+            finally
+            {
+                _instanceGuard = null;
+            }
         }
     }
 

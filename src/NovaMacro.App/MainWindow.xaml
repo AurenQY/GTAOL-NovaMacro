@@ -5,9 +5,9 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="NovaMacro"
-        Height="700"
+        Height="780"
         Width="820"
-        MinHeight="560"
+        MinHeight="620"
         MinWidth="680"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
@@ -16,6 +16,7 @@
 
     <Grid Margin="24">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -34,7 +35,36 @@
         </StackPanel>
 
         <Border Grid.Row="1"
-                Margin="0,20,0,0"
+                Margin="0,16,0,0"
+                Padding="12"
+                Background="#F7F7F7"
+                BorderBrush="#D0D0D0"
+                BorderThickness="1"
+                CornerRadius="4">
+            <StackPanel>
+                <TextBlock x:Name="RuntimeStatusText"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+                <ScrollViewer x:Name="RuntimeDiagnosticsScrollViewer"
+                              MaxHeight="100"
+                              Margin="0,6,0,0"
+                              VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed">
+                    <ItemsControl x:Name="RuntimeDiagnosticsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Margin="0,2,0,0"
+                                           Text="{Binding StringFormat=• {0}}"
+                                           TextWrapping="Wrap" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2"
+                Margin="0,16,0,0"
                 Padding="16"
                 BorderBrush="#D0D0D0"
                 BorderThickness="1"
@@ -86,7 +116,7 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="2"
+        <Border Grid.Row="3"
                 Margin="0,16,0,0"
                 Padding="16"
                 BorderBrush="#D0D0D0"
@@ -207,7 +237,7 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="3"
+        <Border Grid.Row="4"
                 Margin="0,16,0,0"
                 Padding="14"
                 Background="#F7F7F7"
@@ -233,7 +263,7 @@
             </StackPanel>
         </Border>
 
-        <Grid Grid.Row="4"
+        <Grid Grid.Row="5"
               Margin="0,16,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -254,10 +284,10 @@
                        Visibility="Collapsed" />
         </Grid>
 
-        <TextBlock Grid.Row="5"
+        <TextBlock Grid.Row="6"
                    Margin="0,14,0,0"
                    Foreground="DimGray"
-                   Text="Save writes this configuration to disk. Changes are not applied to the currently running macro yet. Startup loading is added in the next milestone."
+                   Text="Saved changes take effect the next time NovaMacro starts. Editing or saving does not change the current runtime."
                    TextWrapping="Wrap" />
     </Grid>
 </Window>

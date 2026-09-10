@@ -4,6 +4,7 @@ using System.Windows.Media;
 using NovaMacro.App.Configuration;
 using NovaMacro.App.Configuration.Storage;
 using NovaMacro.App.Editor;
+using NovaMacro.App.Startup;
 using NovaMacro.Core;
 using NovaMacro.Windows;
 
@@ -14,9 +15,14 @@ public partial class MainWindow : Window
     private readonly MacroEditorSaveCoordinator _saveCoordinator;
     private readonly MacroEditorDraft _draft;
 
-    internal MainWindow(MacroEditorSaveCoordinator saveCoordinator)
+    internal MainWindow(
+        MacroEditorSaveCoordinator saveCoordinator,
+        ApplicationSettings initialSettings,
+        RuntimeStartupStatus runtimeStatus)
     {
         ArgumentNullException.ThrowIfNull(saveCoordinator);
+        ArgumentNullException.ThrowIfNull(initialSettings);
+        ArgumentNullException.ThrowIfNull(runtimeStatus);
 
         _saveCoordinator = saveCoordinator;
         HotkeyKeys = Array.AsReadOnly(Enum.GetValues<HotkeyKey>());
@@ -24,10 +30,11 @@ public partial class MainWindow : Window
 
         InitializeComponent();
 
-        _draft = MacroEditorDraft.From(StarterConfiguration.Default);
+        _draft = MacroEditorDraft.From(initialSettings);
         _draft.Changed += OnDraftChanged;
         DataContext = _draft;
 
+        ShowRuntimeStatus(runtimeStatus);
         RefreshValidation();
     }
 
@@ -90,7 +97,8 @@ public partial class MainWindow : Window
         {
             case MacroEditorSaveStatus.Saved:
                 ShowSaveStatus(
-                    "Saved to disk. Current runtime is unchanged.\n" +
+                    "Saved to disk. Changes take effect next time " +
+                    "NovaMacro starts.\n" +
                     _saveCoordinator.SettingsPath,
                     Brushes.ForestGreen);
                 break;
@@ -110,6 +118,20 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException(
                     $"Unsupported save status '{saveResult.Status}'.");
         }
+    }
+
+    private void ShowRuntimeStatus(RuntimeStartupStatus runtimeStatus)
+    {
+        RuntimeStatusText.Text = runtimeStatus.Message;
+        RuntimeStatusText.Foreground = runtimeStatus.IsActive
+            ? Brushes.ForestGreen
+            : Brushes.Firebrick;
+
+        RuntimeDiagnosticsList.ItemsSource = runtimeStatus.Diagnostics;
+        RuntimeDiagnosticsScrollViewer.Visibility =
+            runtimeStatus.Diagnostics.Count == 0
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void ShowValidation(MacroEditorValidationResult validationResult)

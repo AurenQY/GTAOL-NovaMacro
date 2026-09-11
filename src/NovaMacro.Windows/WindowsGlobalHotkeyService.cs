@@ -33,6 +33,7 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
     private readonly object _admissionGate = new();
     private readonly object _callbackGate = new();
     private readonly ConcurrentQueue<MessageCommand> _commands = new();
+    private readonly Dictionary<int, Registration> _registrations = new();
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly TaskCompletionSource<bool> _messageLoopReady =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -42,7 +43,6 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
     private readonly IHotkeyTriggerWorkScheduler _triggerWorkScheduler;
     private readonly Thread _messageThread;
 
-    private Registration? _currentRegistration;
     private TaskCompletionSource<bool>? _disposeCompletion;
     private Exception? _messageLoopFailure;
     private ServiceState _state = ServiceState.Active;
@@ -96,10 +96,12 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
 
     public event Action<KeyboardHotkey, Exception>? TriggerFailed;
 
-    public void Register(KeyboardHotkey hotkey)
+    public GlobalHotkeyRegistration Register(KeyboardHotkey hotkey)
     {
         ArgumentNullException.ThrowIfNull(hotkey);
-        InvokeLifecycleCommand(() => RegisterCore(hotkey));
+        GlobalHotkeyRegistration? result = null;
+        InvokeLifecycleCommand(() => result = RegisterCore(hotkey));
+        return result!;
     }
 
     public void Replace(KeyboardHotkey hotkey)
@@ -130,7 +132,7 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
                 if (_state == ServiceState.Active)
                 {
                     _state = ServiceState.Disposing;
-                    cleanupCommand = EnqueueCommandCore(DisposeRegistrationCore);
+                    cleanupCommand = EnqueueCommandCore(DisposeRegistrationsCore);
                 }
                 else
                 {
@@ -149,25 +151,45 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
         completion.Task.GetAwaiter().GetResult();
     }
 
-    private void RegisterCore(KeyboardHotkey hotkey)
+    internal void DisposeRegistration(GlobalHotkeyRegistration handle)
     {
-        if (_currentRegistration is not null)
+        MessageCommand command;
+
+        lock (_admissionGate)
         {
-            throw new InvalidOperationException(
-                "A hotkey is already registered. Use Replace to change it.");
+            if (!handle.IsOwnedBy(this))
+            {
+                return;
+            }
+
+            if (_state != ServiceState.Active)
+            {
+                handle.Invalidate(this);
+                return;
+            }
+
+            command = EnqueueCommandCore(() => UnregisterCore(handle));
         }
+
+        WaitForCommand(command);
+    }
+
+    private GlobalHotkeyRegistration RegisterCore(KeyboardHotkey hotkey)
+    {
+        ThrowIfDuplicateHotkey(hotkey);
 
         Registration registration = RegisterNative(
             hotkey,
             AllocateRegistrationId());
         ActivateRegistration(registration);
+        return registration.Handle;
     }
 
     private void ReplaceCore(KeyboardHotkey hotkey)
     {
-        Registration oldRegistration = _currentRegistration
-            ?? throw new InvalidOperationException(
-                "No hotkey is registered. Use Register first.");
+        Registration oldRegistration = GetCompatibilityRegistration(
+            operation: "Replace",
+            requireRegistration: true)!;
 
         if (oldRegistration.Hotkey == hotkey)
         {
@@ -185,7 +207,9 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
 
     private void UnregisterCore()
     {
-        Registration? registration = _currentRegistration;
+        Registration? registration = GetCompatibilityRegistration(
+            operation: "Unregister",
+            requireRegistration: false);
         if (registration is null)
         {
             return;
@@ -195,16 +219,61 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
         DeactivateRegistration(registration);
     }
 
-    private void DisposeRegistrationCore()
+    private void UnregisterCore(GlobalHotkeyRegistration handle)
     {
-        Registration? registration = DetachRegistration(stopAllCallbacks: true);
+        Registration? registration;
+
+        lock (_callbackGate)
+        {
+            registration = _registrations.TryGetValue(
+                    handle.RegistrationId,
+                    out Registration? candidate) &&
+                ReferenceEquals(candidate.Handle, handle)
+                    ? candidate
+                    : null;
+        }
+
         if (registration is null)
         {
+            handle.Invalidate(this);
             return;
         }
 
-        registration.CancelReleaseWait();
         UnregisterNative(registration);
+        DeactivateRegistration(registration);
+    }
+
+    private void DisposeRegistrationsCore()
+    {
+        List<Registration> registrations = DetachAllRegistrations(
+            stopAllCallbacks: true);
+        var failures = new List<Exception>();
+
+        foreach (Registration registration in registrations)
+        {
+            registration.CancelReleaseWait();
+
+            try
+            {
+                UnregisterNative(registration);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        if (failures.Count == 1)
+        {
+            throw failures[0];
+        }
+
+        if (failures.Count > 1)
+        {
+            throw new AggregateException(
+                "One or more global hotkeys could not be unregistered.",
+                failures);
+        }
     }
 
     private Registration RegisterNative(KeyboardHotkey hotkey, int id)
@@ -214,12 +283,17 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
 
         if (!_nativeApi.RegisterHotKey(id, modifiers, virtualKey))
         {
-            throw CreateWin32Exception(
+            int errorCode = Marshal.GetLastWin32Error();
+
+            throw new GlobalHotkeyRegistrationException(
+                hotkey,
+                errorCode,
                 $"Windows rejected global hotkey '{hotkey}'. " +
                 "The combination may already be in use.");
         }
 
-        return new Registration(id, hotkey);
+        return new Registration(
+            new GlobalHotkeyRegistration(this, id, hotkey));
     }
 
     private void UnregisterNative(Registration registration)
@@ -243,6 +317,47 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
         return _nextRegistrationId++;
     }
 
+    private void ThrowIfDuplicateHotkey(KeyboardHotkey hotkey)
+    {
+        lock (_callbackGate)
+        {
+            if (_registrations.Values.Any(
+                    registration => registration.Hotkey == hotkey))
+            {
+                throw new InvalidOperationException(
+                    $"Global hotkey '{hotkey}' is already registered.");
+            }
+        }
+    }
+
+    private Registration? GetCompatibilityRegistration(
+        string operation,
+        bool requireRegistration)
+    {
+        lock (_callbackGate)
+        {
+            if (_registrations.Count > 1)
+            {
+                throw new InvalidOperationException(
+                    $"{operation} is ambiguous while multiple global hotkeys " +
+                    "are registered. Dispose the intended registration handle.");
+            }
+
+            if (_registrations.Count == 0)
+            {
+                if (requireRegistration)
+                {
+                    throw new InvalidOperationException(
+                        "No hotkey is registered. Use Register first.");
+                }
+
+                return null;
+            }
+
+            return _registrations.Values.Single();
+        }
+    }
+
     private void ActivateRegistration(Registration registration)
     {
         lock (_callbackGate)
@@ -253,7 +368,7 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
                     "The global hotkey service no longer accepts callbacks.");
             }
 
-            Volatile.Write(ref _currentRegistration, registration);
+            _registrations.Add(registration.Id, registration);
         }
     }
 
@@ -263,21 +378,25 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
 
         lock (_callbackGate)
         {
-            detached = ReferenceEquals(_currentRegistration, registration)
-                ? _currentRegistration
-                : null;
+            detached = _registrations.TryGetValue(
+                    registration.Id,
+                    out Registration? candidate) &&
+                ReferenceEquals(candidate, registration)
+                    ? candidate
+                    : null;
 
             if (detached is not null)
             {
+                _registrations.Remove(detached.Id);
                 detached.Deactivate();
-                Volatile.Write(ref _currentRegistration, null);
+                detached.Handle.Invalidate(this);
             }
         }
 
         detached?.CancelReleaseWait();
     }
 
-    private Registration? DetachRegistration(bool stopAllCallbacks)
+    private List<Registration> DetachAllRegistrations(bool stopAllCallbacks)
     {
         lock (_callbackGate)
         {
@@ -286,10 +405,16 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
                 _callbacksAllowed = false;
             }
 
-            Registration? registration = _currentRegistration;
-            registration?.Deactivate();
-            Volatile.Write(ref _currentRegistration, null);
-            return registration;
+            List<Registration> registrations = _registrations.Values.ToList();
+            _registrations.Clear();
+
+            foreach (Registration registration in registrations)
+            {
+                registration.Deactivate();
+                registration.Handle.Invalidate(this);
+            }
+
+            return registrations;
         }
     }
 
@@ -298,7 +423,10 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
         lock (_callbackGate)
         {
             if (!_callbacksAllowed ||
-                !ReferenceEquals(_currentRegistration, registration) ||
+                !_registrations.TryGetValue(
+                    registration.Id,
+                    out Registration? currentRegistration) ||
+                !ReferenceEquals(currentRegistration, registration) ||
                 !registration.IsActive)
             {
                 return false;
@@ -371,7 +499,7 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
 
     private void HandleTerminalMessageLoopFailure(Exception exception)
     {
-        Registration? registration;
+        List<Registration> registrations;
 
         lock (_admissionGate)
         {
@@ -385,24 +513,36 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
             lock (_callbackGate)
             {
                 _callbacksAllowed = false;
-                registration = _currentRegistration;
-                registration?.Deactivate();
-                Volatile.Write(ref _currentRegistration, null);
+                registrations = _registrations.Values.ToList();
+                _registrations.Clear();
+
+                foreach (Registration registration in registrations)
+                {
+                    registration.Deactivate();
+                    registration.Handle.Invalidate(this);
+                }
             }
         }
 
-        registration?.CancelReleaseWait();
+        foreach (Registration registration in registrations)
+        {
+            registration.CancelReleaseWait();
+        }
     }
 
     private void HandleHotkeyMessage(int registrationId)
     {
-        Registration? registration = Volatile.Read(ref _currentRegistration);
+        Registration? registration;
 
-        if (registration is null ||
-            registration.Id != registrationId ||
-            !registration.TryBeginReleaseWait())
+        lock (_callbackGate)
         {
-            return;
+            if (!_callbacksAllowed ||
+                !_registrations.TryGetValue(registrationId, out registration) ||
+                !registration.IsActive ||
+                !registration.TryBeginReleaseWait())
+            {
+                return;
+            }
         }
 
         _triggerWorkScheduler.Queue(
@@ -637,8 +777,14 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
             }
         }
 
-        Registration? registration = DetachRegistration(stopAllCallbacks: true);
-        registration?.CancelReleaseWait();
+        List<Registration> registrations = DetachAllRegistrations(
+            stopAllCallbacks: true);
+
+        foreach (Registration registration in registrations)
+        {
+            registration.CancelReleaseWait();
+        }
+
         _lifetimeCancellation.Cancel();
 
         if (!_messageLoopStopped.Task.IsCompleted &&
@@ -756,15 +902,16 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
         private int _isActive = 1;
         private int _releaseWaitInProgress;
 
-        internal Registration(int id, KeyboardHotkey hotkey)
+        internal Registration(GlobalHotkeyRegistration handle)
         {
-            Id = id;
-            Hotkey = hotkey;
+            Handle = handle;
         }
 
-        internal int Id { get; }
+        internal GlobalHotkeyRegistration Handle { get; }
 
-        internal KeyboardHotkey Hotkey { get; }
+        internal int Id => Handle.RegistrationId;
+
+        internal KeyboardHotkey Hotkey => Handle.Hotkey;
 
         internal CancellationToken ReleaseCancellationToken =>
             _releaseCancellation.Token;

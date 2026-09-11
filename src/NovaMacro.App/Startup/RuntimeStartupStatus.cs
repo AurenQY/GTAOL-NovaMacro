@@ -47,7 +47,9 @@ internal sealed class RuntimeStartupStatus
                 "An active runtime status requires runtime settings.",
                 nameof(startupConfiguration));
 
-        string hotkey = FormatHotkey(runtimeSettings.Macro.Hotkey);
+        MacroDefinition runtimeMacro =
+            SingleMacroCompatibility.RequireEnabled(runtimeSettings);
+        string hotkey = FormatHotkey(runtimeMacro.Hotkey);
 
         return startupConfiguration.Status switch
         {

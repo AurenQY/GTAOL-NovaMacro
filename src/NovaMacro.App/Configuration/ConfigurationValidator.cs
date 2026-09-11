@@ -5,6 +5,7 @@ namespace NovaMacro.App.Configuration;
 
 internal static class ConfigurationValidator
 {
+    private const int MaximumMacroCount = 32;
     private const int MaximumMacroNameLength = 64;
     private const int MinimumMacroStepCount = 1;
     private const int MaximumMacroStepCount = 100;
@@ -22,38 +23,116 @@ internal static class ConfigurationValidator
         ArgumentNullException.ThrowIfNull(candidate);
 
         var errors = new List<ConfigurationValidationError>();
-        MacroDefinitionCandidate? macro = candidate.Macro;
+        IReadOnlyList<MacroDefinitionCandidate?>? macros = candidate.Macros;
 
-        if (macro is null)
+        if (macros is null)
         {
             errors.Add(new ConfigurationValidationError(
-                ConfigurationValidationErrorCode.MacroRequired,
-                "macro",
-                "A macro configuration is required."));
+                ConfigurationValidationErrorCode.MacrosRequired,
+                "macros",
+                "A macro collection is required."));
 
             return ConfigurationValidationResult.Invalid(errors);
         }
 
-        string normalizedName = ValidateName(macro.Name, errors);
-        ValidateHotkey(macro.Hotkey, errors);
-        ValidateSequence(macro.Sequence, errors);
+        if (macros.Count > MaximumMacroCount)
+        {
+            errors.Add(new ConfigurationValidationError(
+                ConfigurationValidationErrorCode.MacroCountOutOfRange,
+                "macros",
+                $"Application settings support between 0 and " +
+                $"{MaximumMacroCount} macros."));
+        }
+
+        var normalizedNames = new string[macros.Count];
+        var seenIds = new HashSet<MacroId>();
+        var enabledHotkeys = new HashSet<KeyboardHotkey>();
+
+        for (int index = 0; index < macros.Count; index++)
+        {
+            MacroDefinitionCandidate? macro = macros[index];
+            string macroPath = $"macros[{index}]";
+
+            if (macro is null)
+            {
+                errors.Add(new ConfigurationValidationError(
+                    ConfigurationValidationErrorCode.MacroRequired,
+                    macroPath,
+                    "A macro configuration is required."));
+                continue;
+            }
+
+            ValidateId(macro.Id, macroPath, seenIds, errors);
+            normalizedNames[index] =
+                ValidateName(macro.Name, macroPath, errors);
+            ValidateHotkey(macro.Hotkey, macroPath, errors);
+            ValidateEnabledHotkeyUniqueness(
+                macro.Enabled,
+                macro.Hotkey,
+                macroPath,
+                enabledHotkeys,
+                errors);
+            ValidateSequence(macro.Sequence, macroPath, errors);
+        }
 
         if (errors.Count != 0)
         {
             return ConfigurationValidationResult.Invalid(errors);
         }
 
-        var definition = new MacroDefinition(
-            normalizedName,
-            macro.Hotkey!,
-            macro.Sequence!);
+        var definitions = new List<MacroDefinition>(macros.Count);
+
+        for (int index = 0; index < macros.Count; index++)
+        {
+            MacroDefinitionCandidate macro = macros[index]!;
+            definitions.Add(new MacroDefinition(
+                macro.Id!.Value,
+                normalizedNames[index],
+                macro.Enabled,
+                macro.Hotkey!,
+                macro.Sequence!));
+        }
 
         return ConfigurationValidationResult.Valid(
-            new ApplicationSettings(definition));
+            new ApplicationSettings(definitions));
+    }
+
+    private static void ValidateId(
+        MacroId? id,
+        string macroPath,
+        ISet<MacroId> seenIds,
+        ICollection<ConfigurationValidationError> errors)
+    {
+        if (id is null)
+        {
+            errors.Add(new ConfigurationValidationError(
+                ConfigurationValidationErrorCode.MacroIdRequired,
+                $"{macroPath}.id",
+                "A macro ID is required."));
+            return;
+        }
+
+        if (id.Value.IsEmpty)
+        {
+            errors.Add(new ConfigurationValidationError(
+                ConfigurationValidationErrorCode.MacroIdEmpty,
+                $"{macroPath}.id",
+                "A macro ID cannot be empty."));
+            return;
+        }
+
+        if (!seenIds.Add(id.Value))
+        {
+            errors.Add(new ConfigurationValidationError(
+                ConfigurationValidationErrorCode.DuplicateMacroId,
+                $"{macroPath}.id",
+                $"Macro ID '{id.Value}' is duplicated."));
+        }
     }
 
     private static string ValidateName(
         string? name,
+        string macroPath,
         ICollection<ConfigurationValidationError> errors)
     {
         string normalizedName = name?.Trim() ?? string.Empty;
@@ -62,7 +141,7 @@ internal static class ConfigurationValidator
         {
             errors.Add(new ConfigurationValidationError(
                 ConfigurationValidationErrorCode.MacroNameRequired,
-                "macro.name",
+                $"{macroPath}.name",
                 "Macro name is required."));
         }
 
@@ -70,7 +149,7 @@ internal static class ConfigurationValidator
         {
             errors.Add(new ConfigurationValidationError(
                 ConfigurationValidationErrorCode.MacroNameTooLong,
-                "macro.name",
+                $"{macroPath}.name",
                 $"Macro name must be {MaximumMacroNameLength} characters or fewer."));
         }
 
@@ -78,7 +157,7 @@ internal static class ConfigurationValidator
         {
             errors.Add(new ConfigurationValidationError(
                 ConfigurationValidationErrorCode.MacroNameContainsControlCharacter,
-                "macro.name",
+                $"{macroPath}.name",
                 "Macro name cannot contain control characters."));
         }
 
@@ -87,13 +166,14 @@ internal static class ConfigurationValidator
 
     private static void ValidateHotkey(
         KeyboardHotkey? hotkey,
+        string macroPath,
         ICollection<ConfigurationValidationError> errors)
     {
         if (hotkey is null)
         {
             errors.Add(new ConfigurationValidationError(
                 ConfigurationValidationErrorCode.HotkeyRequired,
-                "macro.hotkey",
+                $"{macroPath}.hotkey",
                 "A macro hotkey is required."));
             return;
         }
@@ -103,20 +183,42 @@ internal static class ConfigurationValidator
         {
             errors.Add(new ConfigurationValidationError(
                 ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-                "macro.hotkey",
+                $"{macroPath}.hotkey",
                 "A letter hotkey must include Ctrl, Alt, or Shift."));
+        }
+    }
+
+    private static void ValidateEnabledHotkeyUniqueness(
+        bool enabled,
+        KeyboardHotkey? hotkey,
+        string macroPath,
+        ISet<KeyboardHotkey> enabledHotkeys,
+        ICollection<ConfigurationValidationError> errors)
+    {
+        if (!enabled || hotkey is null)
+        {
+            return;
+        }
+
+        if (!enabledHotkeys.Add(hotkey))
+        {
+            errors.Add(new ConfigurationValidationError(
+                ConfigurationValidationErrorCode.DuplicateEnabledHotkey,
+                $"{macroPath}.hotkey",
+                "Enabled macros must use unique hotkeys."));
         }
     }
 
     private static void ValidateSequence(
         MacroSequence? sequence,
+        string macroPath,
         ICollection<ConfigurationValidationError> errors)
     {
         if (sequence is null)
         {
             errors.Add(new ConfigurationValidationError(
                 ConfigurationValidationErrorCode.MacroSequenceRequired,
-                "macro.sequence",
+                $"{macroPath}.steps",
                 "A macro sequence is required."));
             return;
         }
@@ -127,7 +229,7 @@ internal static class ConfigurationValidator
         {
             errors.Add(new ConfigurationValidationError(
                 ConfigurationValidationErrorCode.MacroStepCountOutOfRange,
-                "macro.sequence.steps",
+                $"{macroPath}.steps",
                 $"A macro must contain between {MinimumMacroStepCount} and " +
                 $"{MaximumMacroStepCount} steps."));
         }
@@ -139,7 +241,7 @@ internal static class ConfigurationValidator
         for (int index = 0; index < steps.Count; index++)
         {
             MacroStep step = steps[index];
-            string stepPath = $"macro.sequence.steps[{index}]";
+            string stepPath = $"{macroPath}.steps[{index}]";
 
             switch (step)
             {
@@ -169,7 +271,7 @@ internal static class ConfigurationValidator
         {
             errors.Add(new ConfigurationValidationError(
                 ConfigurationValidationErrorCode.MacroMustContainKeyTap,
-                "macro.sequence.steps",
+                $"{macroPath}.steps",
                 "A macro must contain at least one key tap step."));
         }
 
@@ -178,7 +280,7 @@ internal static class ConfigurationValidator
         {
             errors.Add(new ConfigurationValidationError(
                 ConfigurationValidationErrorCode.TotalDelayTooLong,
-                "macro.sequence.steps",
+                $"{macroPath}.steps",
                 "Total macro delay must not exceed 300,000 milliseconds."));
         }
     }

@@ -10,10 +10,15 @@ internal static class StarterConfiguration
     private static ApplicationSettings CreateDefault()
     {
         var candidate = new ApplicationSettingsCandidate(
-            new MacroDefinitionCandidate(
-                "ABC Test",
-                new KeyboardHotkey(HotkeyKey.F8),
-                BuiltInMacroSequences.AbcTest));
+            new MacroDefinitionCandidate?[]
+            {
+                new(
+                    SingleMacroCompatibility.LegacyMacroId,
+                    "ABC Test",
+                    true,
+                    new KeyboardHotkey(HotkeyKey.F8),
+                    BuiltInMacroSequences.AbcTest)
+            });
 
         ConfigurationValidationResult result =
             ConfigurationValidator.Validate(candidate);

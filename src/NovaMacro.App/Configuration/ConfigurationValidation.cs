@@ -2,7 +2,13 @@ namespace NovaMacro.App.Configuration;
 
 internal enum ConfigurationValidationErrorCode
 {
+    MacrosRequired,
+    MacroCountOutOfRange,
     MacroRequired,
+    MacroIdRequired,
+    MacroIdEmpty,
+    DuplicateMacroId,
+    DuplicateEnabledHotkey,
     MacroNameRequired,
     MacroNameTooLong,
     MacroNameContainsControlCharacter,

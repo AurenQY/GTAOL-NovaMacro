@@ -4,9 +4,11 @@ using NovaMacro.Windows;
 namespace NovaMacro.App.Configuration;
 
 internal sealed record ApplicationSettingsCandidate(
-    MacroDefinitionCandidate? Macro);
+    IReadOnlyList<MacroDefinitionCandidate?>? Macros);
 
 internal sealed record MacroDefinitionCandidate(
+    MacroId? Id,
     string? Name,
+    bool Enabled,
     KeyboardHotkey? Hotkey,
     MacroSequence? Sequence);

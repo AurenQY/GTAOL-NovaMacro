@@ -83,18 +83,21 @@ public partial class App : Application
             return RuntimeStartupStatus.Recovery(startupConfiguration);
         }
 
-        if (TryActivateRuntime(runtimeSettings, out Exception? error))
+        MacroDefinition runtimeMacro =
+            SingleMacroCompatibility.RequireEnabled(runtimeSettings);
+
+        if (TryActivateRuntime(runtimeMacro, out Exception? error))
         {
             return RuntimeStartupStatus.Active(startupConfiguration);
         }
 
         return RuntimeStartupStatus.ActivationFailed(
-            runtimeSettings.Macro.Hotkey,
+            runtimeMacro.Hotkey,
             error!);
     }
 
     private bool TryActivateRuntime(
-        ApplicationSettings runtimeSettings,
+        MacroDefinition runtimeMacro,
         out Exception? activationError)
     {
         WindowsGlobalHotkeyService? hotkeyService = null;
@@ -110,13 +113,13 @@ public partial class App : Application
             coordinator = new MacroHotkeyCoordinator(
                 hotkeyService,
                 macroRunner,
-                runtimeSettings.Macro.Sequence,
+                runtimeMacro.Sequence,
                 ReportRuntimeFailure);
 
             // The coordinator owns the hotkey service after construction.
             hotkeyService = null;
 
-            coordinator.Start(runtimeSettings.Macro.Hotkey);
+            coordinator.Start(runtimeMacro.Hotkey);
             _coordinator = coordinator;
             coordinator = null;
             activationError = null;

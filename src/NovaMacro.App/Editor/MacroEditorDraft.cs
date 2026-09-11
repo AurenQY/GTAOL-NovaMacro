@@ -12,6 +12,8 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
     private const long MaximumTimeSpanMilliseconds =
         long.MaxValue / TimeSpan.TicksPerMillisecond;
 
+    private readonly MacroId _macroId;
+    private readonly bool _enabled;
     private string _name;
     private HotkeyKey _hotkeyKey;
     private bool _control;
@@ -20,6 +22,8 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
     private readonly ObservableCollection<MacroStepEditorDraft> _steps;
 
     private MacroEditorDraft(
+        MacroId macroId,
+        bool enabled,
         string name,
         HotkeyKey hotkeyKey,
         bool control,
@@ -27,6 +31,8 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
         bool shift,
         IEnumerable<MacroStepEditorDraft> steps)
     {
+        _macroId = macroId;
+        _enabled = enabled;
         _name = name;
         _hotkeyKey = hotkeyKey;
         _control = control;
@@ -134,7 +140,8 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        MacroDefinition macro = settings.Macro;
+        MacroDefinition macro =
+            SingleMacroCompatibility.RequireEnabled(settings);
         var steps = new List<MacroStepEditorDraft>();
 
         foreach (MacroStep step in macro.Sequence.Steps)
@@ -152,6 +159,8 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
         HotkeyModifiers modifiers = macro.Hotkey.Modifiers;
 
         return new MacroEditorDraft(
+            macro.Id,
+            macro.Enabled,
             macro.Name,
             macro.Hotkey.Key,
             (modifiers & HotkeyModifiers.Control) != 0,
@@ -234,7 +243,7 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
             if (!TryParseDelay(step.MillisecondsText, out TimeSpan duration))
             {
                 errors.Add(new EditorParseError(
-                    $"macro.steps[{index}].milliseconds",
+                    $"macros[0].steps[{index}].milliseconds",
                     $"Step {index + 1}: Delay must be a non-negative whole " +
                     "number of milliseconds."));
                 continue;
@@ -269,10 +278,15 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
         }
 
         candidate = new ApplicationSettingsCandidate(
-            new MacroDefinitionCandidate(
-                Name,
-                new KeyboardHotkey(HotkeyKey, modifiers),
-                new MacroSequence(steps)));
+            new MacroDefinitionCandidate?[]
+            {
+                new(
+                    _macroId,
+                    Name,
+                    _enabled,
+                    new KeyboardHotkey(HotkeyKey, modifiers),
+                    new MacroSequence(steps))
+            });
 
         return true;
     }

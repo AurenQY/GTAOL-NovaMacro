@@ -96,6 +96,7 @@ internal static class SettingsJsonCodec
     {
         ArgumentNullException.ThrowIfNull(settings);
 
+        MacroDefinition macro = RequireV1PersistableMacro(settings);
         var buffer = new ArrayBufferWriter<byte>();
 
         using (var writer = new Utf8JsonWriter(
@@ -109,11 +110,28 @@ internal static class SettingsJsonCodec
             writer.WriteStartObject();
             writer.WriteNumber("version", CurrentVersion);
             writer.WritePropertyName("macro");
-            WriteMacro(writer, settings.Macro);
+            WriteMacro(writer, macro);
             writer.WriteEndObject();
         }
 
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    private static MacroDefinition RequireV1PersistableMacro(
+        ApplicationSettings settings)
+    {
+        MacroDefinition macro =
+            SingleMacroCompatibility.RequireEnabled(settings);
+
+        if (macro.Id != SingleMacroCompatibility.LegacyMacroId)
+        {
+            throw new InvalidOperationException(
+                $"Settings JSON version 1 cannot preserve macro ID " +
+                $"'{macro.Id}'. Only the reserved legacy macro ID " +
+                $"'{SingleMacroCompatibility.LegacyMacroId}' can be written.");
+        }
+
+        return macro;
     }
 
     private static bool TryParseCandidate(
@@ -168,7 +186,8 @@ internal static class SettingsJsonCodec
             return false;
         }
 
-        candidate = new ApplicationSettingsCandidate(macro);
+        candidate = new ApplicationSettingsCandidate(
+            new MacroDefinitionCandidate?[] { macro });
         return true;
     }
 
@@ -217,7 +236,12 @@ internal static class SettingsJsonCodec
             return false;
         }
 
-        macro = new MacroDefinitionCandidate(name, hotkey, sequence);
+        macro = new MacroDefinitionCandidate(
+            SingleMacroCompatibility.LegacyMacroId,
+            name,
+            true,
+            hotkey,
+            sequence);
         return true;
     }
 

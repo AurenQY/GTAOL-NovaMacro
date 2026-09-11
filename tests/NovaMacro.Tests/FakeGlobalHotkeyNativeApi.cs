@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using NovaMacro.Windows;
 
 namespace NovaMacro.Tests;
@@ -13,6 +14,8 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
     internal const int VirtualKeyControl = 0x11;
     internal const int VirtualKeyAlt = 0x12;
     internal const int VirtualKeyA = 0x41;
+    internal const int VirtualKeyB = 0x42;
+    internal const int VirtualKeyC = 0x43;
     internal const int VirtualKeyF8 = 0x77;
 
     private const short KeyDownState = unchecked((short)0x8000);
@@ -22,7 +25,7 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
     private readonly Dictionary<int, uint> _threadIds = new();
     private readonly Dictionary<int, short> _keyStates = new();
     private readonly ConcurrentDictionary<int, SemaphoreSlim> _keyQuerySignals = new();
-    private readonly ConcurrentQueue<bool> _registerResults = new();
+    private readonly ConcurrentQueue<int> _registerFailures = new();
     private readonly ConcurrentQueue<bool> _unregisterResults = new();
     private readonly ConcurrentQueue<bool> _postResults = new();
     private readonly ConcurrentQueue<Exception> _keyStateFailures = new();
@@ -98,8 +101,13 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
             modifiers,
             virtualKey));
 
-        return !_registerResults.TryDequeue(out bool scriptedResult) ||
-            scriptedResult;
+        if (_registerFailures.TryDequeue(out int nativeErrorCode))
+        {
+            Marshal.SetLastPInvokeError(nativeErrorCode);
+            return false;
+        }
+
+        return true;
     }
 
     public bool UnregisterHotKey(int registrationId)
@@ -149,9 +157,9 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
         _messages.Add(new NativeResult(-1, default));
     }
 
-    internal void FailNextRegister()
+    internal void FailNextRegister(int nativeErrorCode = 0)
     {
-        _registerResults.Enqueue(false);
+        _registerFailures.Enqueue(nativeErrorCode);
     }
 
     internal void FailNextUnregister()

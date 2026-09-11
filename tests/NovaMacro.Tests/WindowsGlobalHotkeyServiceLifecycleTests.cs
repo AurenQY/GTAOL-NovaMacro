@@ -24,17 +24,22 @@ public sealed class WindowsGlobalHotkeyServiceLifecycleTests
     }
 
     [Fact]
-    public void Register_WhenRegistrationExistsThrowsClearly()
+    public void Register_DistinctHotkeysCreatesIndependentRegistrations()
     {
         using var native = new FakeGlobalHotkeyNativeApi();
         using var service = new WindowsGlobalHotkeyService(native);
-        service.Register(new KeyboardHotkey(HotkeyKey.F8));
+        var firstHotkey = new KeyboardHotkey(HotkeyKey.F8);
+        var secondHotkey = new KeyboardHotkey(HotkeyKey.F9);
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
-            () => service.Register(new KeyboardHotkey(HotkeyKey.F9)));
+        using GlobalHotkeyRegistration first = service.Register(firstHotkey);
+        using GlobalHotkeyRegistration second = service.Register(secondHotkey);
 
-        Assert.Contains("already registered", exception.Message);
-        Assert.Single(native.RegisterCalls);
+        Assert.NotEqual(first.RegistrationId, second.RegistrationId);
+        Assert.Equal(firstHotkey, first.Hotkey);
+        Assert.Equal(secondHotkey, second.Hotkey);
+        Assert.Equal(
+            new[] { 1, 2 },
+            native.RegisterCalls.Select(call => call.RegistrationId));
     }
 
     [Fact]
@@ -157,8 +162,9 @@ public sealed class WindowsGlobalHotkeyServiceLifecycleTests
         service.Register(new KeyboardHotkey(HotkeyKey.F8));
         native.FailNextRegister();
 
-        Win32Exception exception = Assert.Throws<Win32Exception>(
-            () => service.Replace(new KeyboardHotkey(HotkeyKey.A)));
+        GlobalHotkeyRegistrationException exception =
+            Assert.Throws<GlobalHotkeyRegistrationException>(
+                () => service.Replace(new KeyboardHotkey(HotkeyKey.A)));
 
         Assert.Contains("Windows rejected global hotkey", exception.Message);
         Assert.Equal(new[] { 1 }, native.UnregisterCalls);
@@ -177,7 +183,7 @@ public sealed class WindowsGlobalHotkeyServiceLifecycleTests
         using var service = new WindowsGlobalHotkeyService(native);
         native.FailNextRegister();
 
-        Assert.Throws<Win32Exception>(
+        Assert.Throws<GlobalHotkeyRegistrationException>(
             () => service.Register(new KeyboardHotkey(HotkeyKey.F8)));
 
         service.Register(new KeyboardHotkey(HotkeyKey.A));
@@ -185,6 +191,25 @@ public sealed class WindowsGlobalHotkeyServiceLifecycleTests
         Assert.Equal(
             new[] { 1, 2 },
             native.RegisterCalls.Select(call => call.RegistrationId));
+    }
+
+    [Fact]
+    public void Register_WhenNativeRejectsCarriesHotkeyAndNativeErrorCode()
+    {
+        const int expectedNativeErrorCode = 1409;
+        using var native = new FakeGlobalHotkeyNativeApi();
+        using var service = new WindowsGlobalHotkeyService(native);
+        var hotkey = new KeyboardHotkey(
+            HotkeyKey.F8,
+            HotkeyModifiers.Control | HotkeyModifiers.Shift);
+        native.FailNextRegister(expectedNativeErrorCode);
+
+        GlobalHotkeyRegistrationException exception =
+            Assert.Throws<GlobalHotkeyRegistrationException>(
+                () => service.Register(hotkey));
+
+        Assert.Equal(hotkey, exception.Hotkey);
+        Assert.Equal(expectedNativeErrorCode, exception.NativeErrorCode);
     }
 
     [Fact]

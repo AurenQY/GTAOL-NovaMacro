@@ -239,7 +239,8 @@ public sealed class MacroHotkeyCoordinatorTests
         try
         {
             native.FailNextRegister();
-            Win32Exception failure = Assert.Throws<Win32Exception>(
+            GlobalHotkeyRegistrationException failure =
+                Assert.Throws<GlobalHotkeyRegistrationException>(
                 () => coordinator.Start(F8Hotkey));
             Assert.Contains("Windows rejected global hotkey", failure.Message);
 
@@ -276,7 +277,8 @@ public sealed class MacroHotkeyCoordinatorTests
             new ImmediateDelay(events));
         native.FailNextRegister();
 
-        Assert.Throws<Win32Exception>(() => coordinator.Start(F8Hotkey));
+        Assert.Throws<GlobalHotkeyRegistrationException>(
+            () => coordinator.Start(F8Hotkey));
 
         native.EnqueueHotkey(registrationId: 1);
         coordinator.Dispose();

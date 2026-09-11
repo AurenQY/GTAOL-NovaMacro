@@ -53,15 +53,26 @@ internal static class SettingsJsonTestSupport
         IEnumerable<MacroStep>? steps = null)
     {
         return new ApplicationSettings(
-            new MacroDefinition(
-                name,
-                hotkey ?? new KeyboardHotkey(HotkeyKey.F8),
-                new MacroSequence(
-                    steps ?? new MacroStep[]
-                    {
-                        new KeyTapStep(KeyboardKey.M),
-                        new DelayStep(TimeSpan.FromMilliseconds(250))
-                    })));
+            new[]
+            {
+                new MacroDefinition(
+                    SingleMacroCompatibility.LegacyMacroId,
+                    name,
+                    true,
+                    hotkey ?? new KeyboardHotkey(HotkeyKey.F8),
+                    new MacroSequence(
+                        steps ?? new MacroStep[]
+                        {
+                            new KeyTapStep(KeyboardKey.M),
+                            new DelayStep(TimeSpan.FromMilliseconds(250))
+                        }))
+            });
+    }
+
+    internal static MacroDefinition AssertSingleMacro(
+        ApplicationSettings settings)
+    {
+        return Assert.Single(settings.Macros);
     }
 
     internal static ApplicationSettings AssertSuccess(

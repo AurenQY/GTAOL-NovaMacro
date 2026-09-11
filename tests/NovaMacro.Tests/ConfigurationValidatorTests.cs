@@ -64,23 +64,29 @@ public sealed class ConfigurationValidatorTests
                 new DelayStep(TimeSpan.FromMilliseconds(250))
             });
         var macroCandidate = new MacroDefinitionCandidate(
+            SingleMacroCompatibility.LegacyMacroId,
             rawName,
+            true,
             hotkey,
             sequence);
-        var candidate = new ApplicationSettingsCandidate(macroCandidate);
+        var candidate = new ApplicationSettingsCandidate(
+            new MacroDefinitionCandidate?[] { macroCandidate });
 
         ConfigurationValidationResult result =
             ConfigurationValidator.Validate(candidate);
 
         ApplicationSettings settings = AssertValid(result);
-        Assert.Equal("Useful Macro", settings.Macro.Name);
-        Assert.Equal(hotkey, settings.Macro.Hotkey);
-        Assert.Equal(sequence.Steps, settings.Macro.Sequence.Steps);
-        Assert.NotSame(macroCandidate, settings.Macro);
+        MacroDefinition macro = Assert.Single(settings.Macros);
+        MacroDefinitionCandidate candidateMacro =
+            Assert.Single(candidate.Macros!)!;
+        Assert.Equal("Useful Macro", macro.Name);
+        Assert.Equal(hotkey, macro.Hotkey);
+        Assert.Equal(sequence.Steps, macro.Sequence.Steps);
+        Assert.NotSame(macroCandidate, macro);
 
-        Assert.Equal(rawName, candidate.Macro!.Name);
-        Assert.Same(hotkey, candidate.Macro.Hotkey);
-        Assert.Same(sequence, candidate.Macro.Sequence);
+        Assert.Equal(rawName, candidateMacro.Name);
+        Assert.Same(hotkey, candidateMacro.Hotkey);
+        Assert.Same(sequence, candidateMacro.Sequence);
     }
 
     [Theory]
@@ -96,28 +102,43 @@ public sealed class ConfigurationValidatorTests
         switch (missing)
         {
             case MissingDependency.Macro:
-                candidate = new ApplicationSettingsCandidate(null);
-                expected = (ConfigurationValidationErrorCode.MacroRequired, "macro");
+                candidate = new ApplicationSettingsCandidate(
+                    new MacroDefinitionCandidate?[] { null });
+                expected = (
+                    ConfigurationValidationErrorCode.MacroRequired,
+                    "macros[0]");
                 break;
 
             case MissingDependency.Hotkey:
                 candidate = new ApplicationSettingsCandidate(
-                    new MacroDefinitionCandidate(
-                        "Valid Macro",
-                        null,
-                        ValidSequence()));
-                expected = (ConfigurationValidationErrorCode.HotkeyRequired, "macro.hotkey");
+                    new MacroDefinitionCandidate?[]
+                    {
+                        new(
+                            SingleMacroCompatibility.LegacyMacroId,
+                            "Valid Macro",
+                            true,
+                            null,
+                            ValidSequence())
+                    });
+                expected = (
+                    ConfigurationValidationErrorCode.HotkeyRequired,
+                    "macros[0].hotkey");
                 break;
 
             case MissingDependency.Sequence:
                 candidate = new ApplicationSettingsCandidate(
-                    new MacroDefinitionCandidate(
-                        "Valid Macro",
-                        ValidHotkey(),
-                        null));
+                    new MacroDefinitionCandidate?[]
+                    {
+                        new(
+                            SingleMacroCompatibility.LegacyMacroId,
+                            "Valid Macro",
+                            true,
+                            ValidHotkey(),
+                            null)
+                    });
                 expected = (
                     ConfigurationValidationErrorCode.MacroSequenceRequired,
-                    "macro.sequence");
+                    "macros[0].steps");
                 break;
 
             default:
@@ -133,7 +154,7 @@ public sealed class ConfigurationValidatorTests
     {
         AssertInvalid(
             CreateCandidate(name),
-            (ConfigurationValidationErrorCode.MacroNameRequired, "macro.name"));
+            (ConfigurationValidationErrorCode.MacroNameRequired, "macros[0].name"));
     }
 
     [Theory]
@@ -147,14 +168,18 @@ public sealed class ConfigurationValidatorTests
         if (isValid)
         {
             ApplicationSettings settings = AssertValid(result);
-            Assert.Equal(rawName.Trim(), settings.Macro.Name);
-            Assert.Equal(rawName, candidate.Macro!.Name);
+            Assert.Equal(
+                rawName.Trim(),
+                Assert.Single(settings.Macros).Name);
+            Assert.Equal(
+                rawName,
+                Assert.Single(candidate.Macros!)!.Name);
         }
         else
         {
             AssertInvalid(
                 result,
-                (ConfigurationValidationErrorCode.MacroNameTooLong, "macro.name"));
+                (ConfigurationValidationErrorCode.MacroNameTooLong, "macros[0].name"));
         }
     }
 
@@ -165,7 +190,7 @@ public sealed class ConfigurationValidatorTests
             CreateCandidate("Valid\u0007Name"),
             (
                 ConfigurationValidationErrorCode.MacroNameContainsControlCharacter,
-                "macro.name"));
+                "macros[0].name"));
     }
 
     [Fact]
@@ -187,22 +212,22 @@ public sealed class ConfigurationValidatorTests
 
         AssertInvalid(
             candidate,
-            (ConfigurationValidationErrorCode.MacroNameTooLong, "macro.name"),
+            (ConfigurationValidationErrorCode.MacroNameTooLong, "macros[0].name"),
             (
                 ConfigurationValidationErrorCode.MacroNameContainsControlCharacter,
-                "macro.name"),
+                "macros[0].name"),
             (
                 ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-                "macro.hotkey"),
+                "macros[0].hotkey"),
             (
                 ConfigurationValidationErrorCode.UnsupportedOutputKey,
-                "macro.sequence.steps[0].key"),
+                "macros[0].steps[0].key"),
             (
                 ConfigurationValidationErrorCode.DelayOutOfRange,
-                "macro.sequence.steps[1].duration"),
+                "macros[0].steps[1].duration"),
             (
                 ConfigurationValidationErrorCode.UnsupportedMacroStep,
-                "macro.sequence.steps[2]"));
+                "macros[0].steps[2]"));
     }
 
     [Theory]
@@ -213,7 +238,7 @@ public sealed class ConfigurationValidatorTests
             CreateCandidate(hotkey: new KeyboardHotkey(key)),
             (
                 ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-                "macro.hotkey"));
+                "macros[0].hotkey"));
     }
 
     [Theory]
@@ -286,10 +311,10 @@ public sealed class ConfigurationValidatorTests
                 candidate,
                 (
                     ConfigurationValidationErrorCode.MacroStepCountOutOfRange,
-                    "macro.sequence.steps"),
+                    "macros[0].steps"),
                 (
                     ConfigurationValidationErrorCode.MacroMustContainKeyTap,
-                    "macro.sequence.steps"));
+                    "macros[0].steps"));
         }
         else
         {
@@ -297,7 +322,7 @@ public sealed class ConfigurationValidatorTests
                 candidate,
                 (
                     ConfigurationValidationErrorCode.MacroStepCountOutOfRange,
-                    "macro.sequence.steps"));
+                    "macros[0].steps"));
         }
     }
 
@@ -314,7 +339,7 @@ public sealed class ConfigurationValidatorTests
             CreateCandidate(sequence: sequence),
             (
                 ConfigurationValidationErrorCode.MacroMustContainKeyTap,
-                "macro.sequence.steps"));
+                "macros[0].steps"));
     }
 
     [Theory]
@@ -344,7 +369,7 @@ public sealed class ConfigurationValidatorTests
                 candidate,
                 (
                     ConfigurationValidationErrorCode.DelayOutOfRange,
-                    "macro.sequence.steps[1].duration"));
+                    "macros[0].steps[1].duration"));
         }
     }
 
@@ -381,7 +406,7 @@ public sealed class ConfigurationValidatorTests
                 candidate,
                 (
                     ConfigurationValidationErrorCode.TotalDelayTooLong,
-                    "macro.sequence.steps"));
+                    "macros[0].steps"));
         }
     }
 
@@ -399,10 +424,10 @@ public sealed class ConfigurationValidatorTests
             CreateCandidate(sequence: sequence),
             (
                 ConfigurationValidationErrorCode.DelayOutOfRange,
-                "macro.sequence.steps[1].duration"),
+                "macros[0].steps[1].duration"),
             (
                 ConfigurationValidationErrorCode.TotalDelayTooLong,
-                "macro.sequence.steps"));
+                "macros[0].steps"));
     }
 
     [Fact]
@@ -415,10 +440,10 @@ public sealed class ConfigurationValidatorTests
             CreateCandidate(sequence: sequence),
             (
                 ConfigurationValidationErrorCode.UnsupportedMacroStep,
-                "macro.sequence.steps[0]"),
+                "macros[0].steps[0]"),
             (
                 ConfigurationValidationErrorCode.MacroMustContainKeyTap,
-                "macro.sequence.steps"));
+                "macros[0].steps"));
     }
 
     [Fact]
@@ -434,7 +459,7 @@ public sealed class ConfigurationValidatorTests
             CreateCandidate(sequence: sequence),
             (
                 ConfigurationValidationErrorCode.UnsupportedOutputKey,
-                "macro.sequence.steps[0].key"));
+                "macros[0].steps[0].key"));
     }
 
     [Fact]
@@ -451,10 +476,10 @@ public sealed class ConfigurationValidatorTests
             CreateCandidate(sequence: sequence),
             (
                 ConfigurationValidationErrorCode.UnsupportedOutputKey,
-                "macro.sequence.steps[0].key"),
+                "macros[0].steps[0].key"),
             (
                 ConfigurationValidationErrorCode.DelayOutOfRange,
-                "macro.sequence.steps[1].duration"));
+                "macros[0].steps[1].duration"));
     }
 
     [Fact]
@@ -472,10 +497,15 @@ public sealed class ConfigurationValidatorTests
         MacroSequence? sequence = null)
     {
         return new ApplicationSettingsCandidate(
-            new MacroDefinitionCandidate(
-                name,
-                hotkey ?? ValidHotkey(),
-                sequence ?? ValidSequence()));
+            new MacroDefinitionCandidate?[]
+            {
+                new(
+                    SingleMacroCompatibility.LegacyMacroId,
+                    name,
+                    true,
+                    hotkey ?? ValidHotkey(),
+                    sequence ?? ValidSequence())
+            });
     }
 
     private static KeyboardHotkey ValidHotkey()

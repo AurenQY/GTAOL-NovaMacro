@@ -583,11 +583,15 @@ public sealed class JsonSettingsStoreTests
         ApplicationSettings expected,
         ApplicationSettings actual)
     {
-        Assert.Equal(expected.Macro.Name, actual.Macro.Name);
-        Assert.Equal(expected.Macro.Hotkey, actual.Macro.Hotkey);
+        MacroDefinition expectedMacro = Assert.Single(expected.Macros);
+        MacroDefinition actualMacro = Assert.Single(actual.Macros);
+        Assert.Equal(expectedMacro.Id, actualMacro.Id);
+        Assert.Equal(expectedMacro.Enabled, actualMacro.Enabled);
+        Assert.Equal(expectedMacro.Name, actualMacro.Name);
+        Assert.Equal(expectedMacro.Hotkey, actualMacro.Hotkey);
         Assert.Equal(
-            expected.Macro.Sequence.Steps,
-            actual.Macro.Sequence.Steps);
+            expectedMacro.Sequence.Steps,
+            actualMacro.Sequence.Steps);
     }
 
     private static SettingsSaveResult SaveWithCreateFilesDenied(

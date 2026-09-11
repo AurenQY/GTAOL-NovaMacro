@@ -10,13 +10,16 @@ public sealed class StarterConfigurationTests
     public void Default_HasExpectedSemanticsAndPassesValidation()
     {
         ApplicationSettings starter = StarterConfiguration.Default;
+        MacroDefinition macro = Assert.Single(starter.Macros);
 
-        Assert.Equal("ABC Test", starter.Macro.Name);
+        Assert.Equal(SingleMacroCompatibility.LegacyMacroId, macro.Id);
+        Assert.True(macro.Enabled);
+        Assert.Equal("ABC Test", macro.Name);
         Assert.Equal(
             new KeyboardHotkey(HotkeyKey.F8),
-            starter.Macro.Hotkey);
+            macro.Hotkey);
         Assert.Collection(
-            starter.Macro.Sequence.Steps,
+            macro.Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.A), step),
             step => Assert.Equal(
                 new DelayStep(TimeSpan.FromMilliseconds(150)),
@@ -30,10 +33,15 @@ public sealed class StarterConfigurationTests
         ConfigurationValidationResult validation =
             ConfigurationValidator.Validate(
                 new ApplicationSettingsCandidate(
-                    new MacroDefinitionCandidate(
-                        starter.Macro.Name,
-                        starter.Macro.Hotkey,
-                        starter.Macro.Sequence)));
+                    new MacroDefinitionCandidate?[]
+                    {
+                        new(
+                            macro.Id,
+                            macro.Name,
+                            macro.Enabled,
+                            macro.Hotkey,
+                            macro.Sequence)
+                    }));
 
         Assert.True(validation.IsValid);
         Assert.NotNull(validation.Settings);

@@ -195,7 +195,9 @@ public sealed class SettingsJsonTokenTests
 
         ApplicationSettings settings = SettingsJsonTestSupport.AssertSuccess(
             SettingsJsonCodec.Read(json));
-        Assert.Equal(expectedKey, settings.Macro.Hotkey.Key);
+        MacroDefinition macro =
+            SettingsJsonTestSupport.AssertSingleMacro(settings);
+        Assert.Equal(expectedKey, macro.Hotkey.Key);
 
         using JsonDocument written = JsonDocument.Parse(
             SettingsJsonCodec.Write(settings));
@@ -221,8 +223,10 @@ public sealed class SettingsJsonTokenTests
 
         ApplicationSettings settings = SettingsJsonTestSupport.AssertSuccess(
             SettingsJsonCodec.Read(json));
+        MacroDefinition macro =
+            SettingsJsonTestSupport.AssertSingleMacro(settings);
         KeyTapStep step = Assert.IsType<KeyTapStep>(
-            Assert.Single(settings.Macro.Sequence.Steps));
+            Assert.Single(macro.Sequence.Steps));
         Assert.Equal(expectedKey, step.Key);
 
         using JsonDocument written = JsonDocument.Parse(
@@ -281,7 +285,9 @@ public sealed class SettingsJsonTokenTests
 
         ApplicationSettings settings = SettingsJsonTestSupport.AssertSuccess(
             SettingsJsonCodec.Read(json));
-        Assert.Equal(expected, settings.Macro.Hotkey.Modifiers);
+        MacroDefinition macro =
+            SettingsJsonTestSupport.AssertSingleMacro(settings);
+        Assert.Equal(expected, macro.Hotkey.Modifiers);
     }
 
     [Theory]

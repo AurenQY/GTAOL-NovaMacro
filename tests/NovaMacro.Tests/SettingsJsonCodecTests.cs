@@ -424,13 +424,17 @@ public sealed class SettingsJsonCodecTests
 
         ApplicationSettings settings = SettingsJsonTestSupport.AssertSuccess(
             SettingsJsonCodec.Read(json));
+        MacroDefinition macro =
+            SettingsJsonTestSupport.AssertSingleMacro(settings);
 
-        Assert.Equal("Example", settings.Macro.Name);
+        Assert.Equal(SingleMacroCompatibility.LegacyMacroId, macro.Id);
+        Assert.True(macro.Enabled);
+        Assert.Equal("Example", macro.Name);
         Assert.Equal(
             new KeyboardHotkey(HotkeyKey.F8, HotkeyModifiers.Control),
-            settings.Macro.Hotkey);
+            macro.Hotkey);
         Assert.Collection(
-            settings.Macro.Sequence.Steps,
+            macro.Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.M), step),
             step => Assert.Equal(
                 new DelayStep(TimeSpan.FromMilliseconds(250)),
@@ -455,12 +459,20 @@ public sealed class SettingsJsonCodecTests
         string json = SettingsJsonCodec.Write(original);
         ApplicationSettings restored = SettingsJsonTestSupport.AssertSuccess(
             SettingsJsonCodec.Read(json));
+        MacroDefinition originalMacro =
+            SettingsJsonTestSupport.AssertSingleMacro(original);
+        MacroDefinition restoredMacro =
+            SettingsJsonTestSupport.AssertSingleMacro(restored);
 
-        Assert.Equal(original.Macro.Name, restored.Macro.Name);
-        Assert.Equal(original.Macro.Hotkey, restored.Macro.Hotkey);
+        Assert.Equal(SingleMacroCompatibility.LegacyMacroId, originalMacro.Id);
+        Assert.Equal(originalMacro.Id, restoredMacro.Id);
+        Assert.True(originalMacro.Enabled);
+        Assert.True(restoredMacro.Enabled);
+        Assert.Equal(originalMacro.Name, restoredMacro.Name);
+        Assert.Equal(originalMacro.Hotkey, restoredMacro.Hotkey);
         Assert.Equal(
-            original.Macro.Sequence.Steps,
-            restored.Macro.Sequence.Steps);
+            originalMacro.Sequence.Steps,
+            restoredMacro.Sequence.Steps);
     }
 
     [Theory]
@@ -599,8 +611,10 @@ public sealed class SettingsJsonCodecTests
         {
             ApplicationSettings settings = SettingsJsonTestSupport.AssertSuccess(
                 SettingsJsonCodec.Read(json));
+            MacroDefinition macro =
+                SettingsJsonTestSupport.AssertSingleMacro(settings);
             DelayStep delay = Assert.IsType<DelayStep>(
-                settings.Macro.Sequence.Steps[1]);
+                macro.Sequence.Steps[1]);
             Assert.Equal(
                 TimeSpan.FromMilliseconds(milliseconds),
                 delay.Duration);
@@ -611,7 +625,7 @@ public sealed class SettingsJsonCodecTests
                 json,
                 (
                     ConfigurationValidationErrorCode.DelayOutOfRange,
-                    "macro.sequence.steps[1].duration"));
+                    "macros[0].steps[1].duration"));
         }
     }
 
@@ -648,39 +662,39 @@ public sealed class SettingsJsonCodecTests
                     macroJson: SettingsJsonTestSupport.MacroJson(
                         nameJson: "\"   \"")),
                 ConfigurationValidationErrorCode.MacroNameRequired,
-                "macro.name"),
+                "macros[0].name"),
             (
                 SettingsJsonTestSupport.DocumentJson(
                     macroJson: SettingsJsonTestSupport.MacroJson(
                         hotkeyJson: SettingsJsonTestSupport.HotkeyJson(
                             keyJson: "\"A\""))),
                 ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-                "macro.hotkey"),
+                "macros[0].hotkey"),
             (
                 SettingsJsonTestSupport.DocumentJson(
                     macroJson: SettingsJsonTestSupport.MacroJson(
                         stepsJson: SettingsJsonTestSupport.DelayStepsJson("0"))),
                 ConfigurationValidationErrorCode.DelayOutOfRange,
-                "macro.sequence.steps[1].duration"),
+                "macros[0].steps[1].duration"),
             (
                 SettingsJsonTestSupport.DocumentJson(
                     macroJson: SettingsJsonTestSupport.MacroJson(
                         stepsJson: SettingsJsonTestSupport.DelayStepsJson("60001"))),
                 ConfigurationValidationErrorCode.DelayOutOfRange,
-                "macro.sequence.steps[1].duration"),
+                "macros[0].steps[1].duration"),
             (
                 SettingsJsonTestSupport.DocumentJson(
                     macroJson: SettingsJsonTestSupport.MacroJson(
                         stepsJson: oneHundredOneSteps)),
                 ConfigurationValidationErrorCode.MacroStepCountOutOfRange,
-                "macro.sequence.steps"),
+                "macros[0].steps"),
             (
                 SettingsJsonTestSupport.DocumentJson(
                     macroJson: SettingsJsonTestSupport.MacroJson(
                         stepsJson:
                             "[{\"type\":\"delay\",\"milliseconds\":1}]")),
                 ConfigurationValidationErrorCode.MacroMustContainKeyTap,
-                "macro.sequence.steps")
+                "macros[0].steps")
         };
 
         foreach ((string json, ConfigurationValidationErrorCode code, string path)
@@ -700,7 +714,9 @@ public sealed class SettingsJsonCodecTests
         ApplicationSettings settings = SettingsJsonTestSupport.AssertSuccess(
             SettingsJsonCodec.Read(json));
 
-        Assert.Equal("Example", settings.Macro.Name);
+        Assert.Equal(
+            "Example",
+            SettingsJsonTestSupport.AssertSingleMacro(settings).Name);
     }
 
     [Fact]
@@ -768,6 +784,94 @@ public sealed class SettingsJsonCodecTests
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
             () => SettingsJsonCodec.Write(settings));
         Assert.Contains("whole-millisecond", exception.Message);
+    }
+
+    [Fact]
+    public void Writer_RejectsSettingsWithoutMacros()
+    {
+        var settings = new ApplicationSettings(
+            Array.Empty<MacroDefinition>());
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => SettingsJsonCodec.Write(settings));
+
+        Assert.Contains("requires exactly one macro", exception.Message);
+        Assert.Empty(settings.Macros);
+    }
+
+    [Fact]
+    public void Writer_RejectsMultipleMacrosWithoutSerializingFirst()
+    {
+        MacroDefinition first = SettingsJsonTestSupport.AssertSingleMacro(
+            SettingsJsonTestSupport.CreateSettings(name: "First"));
+        var second = new MacroDefinition(
+            new MacroId(new Guid("22222222-2222-2222-2222-222222222222")),
+            "Second",
+            true,
+            new KeyboardHotkey(HotkeyKey.F9),
+            first.Sequence);
+        var settings = new ApplicationSettings(new[] { first, second });
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => SettingsJsonCodec.Write(settings));
+
+        Assert.Contains("requires exactly one macro", exception.Message);
+        Assert.Equal(
+            new[] { "First", "Second" },
+            settings.Macros.Select(macro => macro.Name));
+    }
+
+    [Fact]
+    public void Writer_RejectsSoleDisabledLegacyMacro()
+    {
+        MacroDefinition enabled = SettingsJsonTestSupport.AssertSingleMacro(
+            SettingsJsonTestSupport.CreateSettings());
+        var disabled = new MacroDefinition(
+            enabled.Id,
+            enabled.Name,
+            false,
+            enabled.Hotkey,
+            enabled.Sequence);
+        var settings = new ApplicationSettings(new[] { disabled });
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => SettingsJsonCodec.Write(settings));
+
+        Assert.Contains("only macro to be enabled", exception.Message);
+        Assert.False(Assert.Single(settings.Macros).Enabled);
+    }
+
+    [Fact]
+    public void Writer_RejectsSoleEnabledMacroWithNonLegacyMacroId()
+    {
+        MacroDefinition legacyMacro =
+            SettingsJsonTestSupport.AssertSingleMacro(
+                SettingsJsonTestSupport.CreateSettings());
+        var nonLegacyId = new MacroId(
+            new Guid("11111111-1111-1111-1111-111111111111"));
+        var settings = new ApplicationSettings(
+            new[]
+            {
+                new MacroDefinition(
+                    nonLegacyId,
+                    legacyMacro.Name,
+                    true,
+                    legacyMacro.Hotkey,
+                    legacyMacro.Sequence)
+            });
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => SettingsJsonCodec.Write(settings));
+
+        Assert.Contains("version 1 cannot preserve macro ID", exception.Message);
+        Assert.Contains(nonLegacyId.ToString(), exception.Message);
+        Assert.Equal(
+            nonLegacyId,
+            SettingsJsonTestSupport.AssertSingleMacro(settings).Id);
     }
 
     [Fact]

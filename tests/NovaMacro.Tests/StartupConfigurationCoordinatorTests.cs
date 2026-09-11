@@ -54,12 +54,14 @@ public sealed class StartupConfigurationCoordinatorTests
         Assert.Same(loaded, result.RuntimeSettings);
         Assert.Same(result.InitialEditorSettings, result.RuntimeSettings);
         Assert.Equal(store.SettingsPath, result.SettingsPath);
-        Assert.Equal("Loaded A", result.RuntimeSettings!.Macro.Name);
+        MacroDefinition runtimeMacro =
+            Assert.Single(result.RuntimeSettings!.Macros);
+        Assert.Equal("Loaded A", runtimeMacro.Name);
         Assert.Equal(
             new KeyboardHotkey(HotkeyKey.F9, HotkeyModifiers.Control),
-            result.RuntimeSettings.Macro.Hotkey);
+            runtimeMacro.Hotkey);
         Assert.Collection(
-            result.RuntimeSettings.Macro.Sequence.Steps,
+            runtimeMacro.Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.M), step),
             step => Assert.Equal(
                 new DelayStep(TimeSpan.FromMilliseconds(250)),
@@ -114,11 +116,11 @@ public sealed class StartupConfigurationCoordinatorTests
             new(
                 ConfigurationValidationErrorCode
                     .ModifierlessLetterHotkeyNotAllowed,
-                "macro.hotkey",
+                "macros[0].hotkey",
                 "Modifierless letter hotkey for the test."),
             new(
                 ConfigurationValidationErrorCode.DelayOutOfRange,
-                "macro.steps[1].milliseconds",
+                "macros[0].steps[1].milliseconds",
                 "Delay range failure for the test.")
         };
         SettingsJsonReadResult jsonResult =
@@ -252,28 +254,34 @@ public sealed class StartupConfigurationCoordinatorTests
     private static ApplicationSettings CreateLoadedSettings()
     {
         return new ApplicationSettings(
-            new MacroDefinition(
-                "Loaded A",
-                new KeyboardHotkey(
-                    HotkeyKey.F9,
-                    HotkeyModifiers.Control),
-                new MacroSequence(
-                    new MacroStep[]
-                    {
-                        new KeyTapStep(KeyboardKey.M),
-                        new DelayStep(TimeSpan.FromMilliseconds(250)),
-                        new KeyTapStep(KeyboardKey.Enter)
-                    })));
+            new[]
+            {
+                new MacroDefinition(
+                    SingleMacroCompatibility.LegacyMacroId,
+                    "Loaded A",
+                    true,
+                    new KeyboardHotkey(
+                        HotkeyKey.F9,
+                        HotkeyModifiers.Control),
+                    new MacroSequence(
+                        new MacroStep[]
+                        {
+                            new KeyTapStep(KeyboardKey.M),
+                            new DelayStep(TimeSpan.FromMilliseconds(250)),
+                            new KeyTapStep(KeyboardKey.Enter)
+                        }))
+            });
     }
 
     private static void AssertStarterSemantics(ApplicationSettings settings)
     {
-        Assert.Equal("ABC Test", settings.Macro.Name);
+        MacroDefinition macro = Assert.Single(settings.Macros);
+        Assert.Equal("ABC Test", macro.Name);
         Assert.Equal(
             new KeyboardHotkey(HotkeyKey.F8),
-            settings.Macro.Hotkey);
+            macro.Hotkey);
         Assert.Collection(
-            settings.Macro.Sequence.Steps,
+            macro.Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.A), step),
             step => Assert.Equal(
                 new DelayStep(TimeSpan.FromMilliseconds(150)),
@@ -292,13 +300,19 @@ public sealed class StartupConfigurationCoordinatorTests
         Assert.Null(result.RuntimeSettings);
 
         ApplicationSettings starter = result.InitialEditorSettings;
+        MacroDefinition macro = Assert.Single(starter.Macros);
         ConfigurationValidationResult validation =
             ConfigurationValidator.Validate(
                 new ApplicationSettingsCandidate(
-                    new MacroDefinitionCandidate(
-                        starter.Macro.Name,
-                        starter.Macro.Hotkey,
-                        starter.Macro.Sequence)));
+                    new MacroDefinitionCandidate?[]
+                    {
+                        new(
+                            macro.Id,
+                            macro.Name,
+                            macro.Enabled,
+                            macro.Hotkey,
+                            macro.Sequence)
+                    }));
 
         Assert.True(validation.IsValid);
         Assert.NotNull(validation.Settings);

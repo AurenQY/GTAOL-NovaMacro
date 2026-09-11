@@ -44,9 +44,10 @@ public sealed class MacroEditorSaveCoordinatorTests
         Assert.Null(result.StorageError);
         Assert.Equal(1, store.SaveCallCount);
         ApplicationSettings saved = Assert.Single(store.SavedSettings);
+        MacroDefinition savedMacro = Assert.Single(saved.Macros);
         Assert.Same(result.Validation.Settings, saved);
-        Assert.Equal("ABC Test", saved.Macro.Name);
-        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), saved.Macro.Hotkey);
+        Assert.Equal("ABC Test", savedMacro.Name);
+        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), savedMacro.Hotkey);
         Assert.Equal(0, store.LoadCallCount);
     }
 
@@ -65,7 +66,7 @@ public sealed class MacroEditorSaveCoordinatorTests
         Assert.False(result.Validation.IsValid);
         Assert.Null(result.Validation.Settings);
         EditorParseError error = Assert.Single(result.Validation.ParseErrors);
-        Assert.Equal("macro.steps[1].milliseconds", error.Path);
+        Assert.Equal("macros[0].steps[1].milliseconds", error.Path);
         Assert.False(string.IsNullOrWhiteSpace(error.Message));
         Assert.Empty(result.Validation.ConfigurationErrors);
         Assert.Empty(store.SavedSettings);
@@ -93,7 +94,7 @@ public sealed class MacroEditorSaveCoordinatorTests
         Assert.Equal(
             ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
             error.Code);
-        Assert.Equal("macro.hotkey", error.Path);
+        Assert.Equal("macros[0].hotkey", error.Path);
         Assert.False(string.IsNullOrWhiteSpace(error.Message));
         Assert.Empty(store.SavedSettings);
         Assert.Equal(0, store.SaveCallCount);
@@ -134,9 +135,38 @@ public sealed class MacroEditorSaveCoordinatorTests
         MacroEditorSaveResult result = coordinator.Save(draft);
 
         Assert.Equal(MacroEditorSaveStatus.Saved, result.Status);
-        Assert.Equal("My Macro", Assert.Single(store.SavedSettings).Macro.Name);
+        Assert.Equal(
+            "My Macro",
+            Assert.Single(Assert.Single(store.SavedSettings).Macros).Name);
         Assert.Equal("  My Macro  ", draft.Name);
         Assert.Equal(1, store.SaveCallCount);
+    }
+
+    [Fact]
+    public void Save_EditedDraftPreservesLegacyIdentityAndEnabledState()
+    {
+        var store = new RecordingSettingsStore();
+        var coordinator = new MacroEditorSaveCoordinator(store);
+        MacroEditorDraft draft = CreateDraft();
+        draft.Name = "Edited Legacy Macro";
+        draft.HotkeyKey = HotkeyKey.F9;
+        draft.Control = true;
+        draft.Steps[0].Key = KeyboardKey.M;
+
+        MacroEditorSaveResult result = coordinator.Save(draft);
+
+        Assert.Equal(MacroEditorSaveStatus.Saved, result.Status);
+        MacroDefinition savedMacro = Assert.Single(
+            Assert.Single(store.SavedSettings).Macros);
+        Assert.Equal(SingleMacroCompatibility.LegacyMacroId, savedMacro.Id);
+        Assert.True(savedMacro.Enabled);
+        Assert.Equal("Edited Legacy Macro", savedMacro.Name);
+        Assert.Equal(
+            new KeyboardHotkey(HotkeyKey.F9, HotkeyModifiers.Control),
+            savedMacro.Hotkey);
+        Assert.Equal(
+            new KeyTapStep(KeyboardKey.M),
+            savedMacro.Sequence.Steps[0]);
     }
 
     [Fact]
@@ -157,7 +187,7 @@ public sealed class MacroEditorSaveCoordinatorTests
             new KeyboardHotkey(
                 HotkeyKey.F9,
                 HotkeyModifiers.Control | HotkeyModifiers.Alt),
-            Assert.Single(store.SavedSettings).Macro.Hotkey);
+            Assert.Single(Assert.Single(store.SavedSettings).Macros).Hotkey);
         Assert.Equal(1, store.SaveCallCount);
     }
 
@@ -177,7 +207,8 @@ public sealed class MacroEditorSaveCoordinatorTests
 
         Assert.Equal(MacroEditorSaveStatus.Saved, result.Status);
         Assert.Collection(
-            Assert.Single(store.SavedSettings).Macro.Sequence.Steps,
+            Assert.Single(Assert.Single(store.SavedSettings).Macros)
+                .Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.M), step),
             step => Assert.Equal(
                 new DelayStep(TimeSpan.FromMilliseconds(250)),
@@ -202,7 +233,8 @@ public sealed class MacroEditorSaveCoordinatorTests
 
         Assert.Equal(MacroEditorSaveStatus.Saved, result.Status);
         DelayStep delay = Assert.IsType<DelayStep>(
-            Assert.Single(store.SavedSettings).Macro.Sequence.Steps[1]);
+            Assert.Single(Assert.Single(store.SavedSettings).Macros)
+                .Sequence.Steps[1]);
         Assert.Equal(TimeSpan.FromMilliseconds(150), delay.Duration);
         Assert.Equal("00150", draft.Steps[1].MillisecondsText);
     }

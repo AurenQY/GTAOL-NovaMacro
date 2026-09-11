@@ -46,10 +46,11 @@ public sealed class MacroEditorDraftTests
         draft.Remove(draft.Steps[^1]);
         draft.AddDelay();
 
-        Assert.Equal("ABC Test", starter.Macro.Name);
-        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), starter.Macro.Hotkey);
+        MacroDefinition starterMacro = AssertSingleMacro(starter);
+        Assert.Equal("ABC Test", starterMacro.Name);
+        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), starterMacro.Hotkey);
         Assert.Collection(
-            starter.Macro.Sequence.Steps,
+            starterMacro.Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.A), step),
             step => Assert.Equal(
                 new DelayStep(TimeSpan.FromMilliseconds(150)),
@@ -110,7 +111,7 @@ public sealed class MacroEditorDraftTests
         AssertInvalid(
             draft,
             ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-            "macro.hotkey");
+            "macros[0].hotkey");
     }
 
     [Theory]
@@ -135,7 +136,9 @@ public sealed class MacroEditorDraftTests
             : alt
                 ? HotkeyModifiers.Alt
                 : HotkeyModifiers.Shift;
-        Assert.Equal(new KeyboardHotkey(HotkeyKey.A, expected), settings.Macro.Hotkey);
+        Assert.Equal(
+            new KeyboardHotkey(HotkeyKey.A, expected),
+            AssertSingleMacro(settings).Hotkey);
     }
 
     [Theory]
@@ -149,7 +152,7 @@ public sealed class MacroEditorDraftTests
 
         ApplicationSettings settings = AssertValid(draft);
 
-        Assert.Equal(new KeyboardHotkey(key), settings.Macro.Hotkey);
+        Assert.Equal(new KeyboardHotkey(key), AssertSingleMacro(settings).Hotkey);
     }
 
     [Fact]
@@ -160,7 +163,7 @@ public sealed class MacroEditorDraftTests
 
         ApplicationSettings settings = AssertValid(draft);
 
-        Assert.Equal("My Macro", settings.Macro.Name);
+        Assert.Equal("My Macro", AssertSingleMacro(settings).Name);
     }
 
     [Fact]
@@ -172,7 +175,7 @@ public sealed class MacroEditorDraftTests
         AssertInvalid(
             draft,
             ConfigurationValidationErrorCode.MacroNameRequired,
-            "macro.name");
+            "macros[0].name");
     }
 
     [Fact]
@@ -184,7 +187,7 @@ public sealed class MacroEditorDraftTests
         AssertInvalid(
             draft,
             ConfigurationValidationErrorCode.MacroNameTooLong,
-            "macro.name");
+            "macros[0].name");
     }
 
     [Theory]
@@ -200,7 +203,7 @@ public sealed class MacroEditorDraftTests
 
         ApplicationSettingsCandidate candidate = AssertCandidate(draft);
         DelayStep delay = Assert.IsType<DelayStep>(
-            candidate.Macro!.Sequence!.Steps[1]);
+            AssertSingleMacro(candidate).Sequence!.Steps[1]);
         Assert.Equal(
             TimeSpan.FromMilliseconds(expectedMilliseconds),
             delay.Duration);
@@ -225,7 +228,7 @@ public sealed class MacroEditorDraftTests
         Assert.False(created);
         Assert.Null(candidate);
         EditorParseError error = Assert.Single(errors);
-        Assert.Equal("macro.steps[1].milliseconds", error.Path);
+        Assert.Equal("macros[0].steps[1].milliseconds", error.Path);
         Assert.False(string.IsNullOrWhiteSpace(error.Message));
     }
 
@@ -241,7 +244,7 @@ public sealed class MacroEditorDraftTests
 
         ApplicationSettingsCandidate candidate = AssertCandidate(draft);
         DelayStep delay = Assert.IsType<DelayStep>(
-            candidate.Macro!.Sequence!.Steps[1]);
+            AssertSingleMacro(candidate).Sequence!.Steps[1]);
         Assert.Equal(
             TimeSpan.FromMilliseconds(expectedMilliseconds),
             delay.Duration);
@@ -249,7 +252,7 @@ public sealed class MacroEditorDraftTests
         AssertValidationError(
             ConfigurationValidator.Validate(candidate),
             ConfigurationValidationErrorCode.DelayOutOfRange,
-            "macro.sequence.steps[1].duration");
+            "macros[0].steps[1].duration");
     }
 
     [Fact]
@@ -268,8 +271,8 @@ public sealed class MacroEditorDraftTests
         Assert.Equal(
             new[]
             {
-                "macro.steps[1].milliseconds",
-                "macro.steps[3].milliseconds"
+                "macros[0].steps[1].milliseconds",
+                "macros[0].steps[3].milliseconds"
             },
             errors.Select(error => error.Path));
         Assert.All(
@@ -300,7 +303,7 @@ public sealed class MacroEditorDraftTests
         AssertInvalid(
             draft,
             ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-            "macro.hotkey");
+            "macros[0].hotkey");
 
         draft.Control = true;
 
@@ -396,7 +399,7 @@ public sealed class MacroEditorDraftTests
         AssertInvalid(
             draft,
             ConfigurationValidationErrorCode.MacroMustContainKeyTap,
-            "macro.sequence.steps");
+            "macros[0].steps");
     }
 
     [Fact]
@@ -457,7 +460,7 @@ public sealed class MacroEditorDraftTests
         ApplicationSettings settings = AssertValid(draft);
 
         Assert.Collection(
-            settings.Macro.Sequence.Steps,
+            AssertSingleMacro(settings).Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.A), step),
             step => Assert.Equal(
                 new DelayStep(TimeSpan.FromMilliseconds(100)),
@@ -496,10 +499,10 @@ public sealed class MacroEditorDraftTests
 
         Assert.Equal(
             new KeyTapStep(KeyboardKey.A),
-            candidate.Macro!.Sequence!.Steps[0]);
+            AssertSingleMacro(candidate).Sequence!.Steps[0]);
         Assert.Equal(
             new DelayStep(TimeSpan.FromMilliseconds(150)),
-            candidate.Macro.Sequence.Steps[1]);
+            AssertSingleMacro(candidate).Sequence!.Steps[1]);
         Assert.True(ConfigurationValidator.Validate(candidate).IsValid);
     }
 
@@ -513,11 +516,11 @@ public sealed class MacroEditorDraftTests
         }
 
         ApplicationSettingsCandidate candidate = AssertCandidate(draft);
-        Assert.Equal(101, candidate.Macro!.Sequence!.Steps.Count);
+        Assert.Equal(101, AssertSingleMacro(candidate).Sequence!.Steps.Count);
         AssertValidationError(
             ConfigurationValidator.Validate(candidate),
             ConfigurationValidationErrorCode.MacroStepCountOutOfRange,
-            "macro.sequence.steps");
+            "macros[0].steps");
     }
 
     [Fact]
@@ -540,7 +543,7 @@ public sealed class MacroEditorDraftTests
         AssertValidationError(
             ConfigurationValidator.Validate(candidate),
             ConfigurationValidationErrorCode.TotalDelayTooLong,
-            "macro.sequence.steps");
+            "macros[0].steps");
     }
 
     [Fact]
@@ -580,6 +583,18 @@ public sealed class MacroEditorDraftTests
         Assert.True(validation.IsValid);
         Assert.Empty(validation.Errors);
         return Assert.IsType<ApplicationSettings>(validation.Settings);
+    }
+
+    private static MacroDefinition AssertSingleMacro(
+        ApplicationSettings settings)
+    {
+        return Assert.Single(settings.Macros);
+    }
+
+    private static MacroDefinitionCandidate AssertSingleMacro(
+        ApplicationSettingsCandidate candidate)
+    {
+        return Assert.Single(candidate.Macros!)!;
     }
 
     private static void AssertInvalid(

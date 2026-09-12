@@ -1,110 +1,125 @@
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Media;
 using NovaMacro.App.Configuration;
 using NovaMacro.App.Configuration.Storage;
 using NovaMacro.App.Editor;
 using NovaMacro.App.Startup;
-using NovaMacro.Core;
-using NovaMacro.Windows;
 
 namespace NovaMacro.App;
 
 public partial class MainWindow : Window
 {
     private readonly MacroEditorSaveCoordinator _saveCoordinator;
-    private readonly MacroEditorDraft _draft;
+    private readonly MultiMacroEditorDraft _draft;
+    private readonly bool _requiresRecoveryConfirmation;
+    private bool _recoverySaveConfirmed;
 
     internal MainWindow(
         MacroEditorSaveCoordinator saveCoordinator,
-        ApplicationSettings initialSettings,
-        RuntimeStartupStatus runtimeStatus)
+        StartupConfigurationResult startupConfiguration)
     {
         ArgumentNullException.ThrowIfNull(saveCoordinator);
-        ArgumentNullException.ThrowIfNull(initialSettings);
-        ArgumentNullException.ThrowIfNull(runtimeStatus);
+        ArgumentNullException.ThrowIfNull(startupConfiguration);
 
         _saveCoordinator = saveCoordinator;
-        HotkeyKeys = Array.AsReadOnly(Enum.GetValues<HotkeyKey>());
-        OutputKeys = Array.AsReadOnly(Enum.GetValues<KeyboardKey>());
+        _draft = MultiMacroEditorDraft.From(
+            startupConfiguration.InitialEditorSettings);
+        _requiresRecoveryConfirmation = startupConfiguration.Status is
+            StartupConfigurationStatus.InvalidRecovery or
+            StartupConfigurationStatus.UnavailableRecovery;
 
         InitializeComponent();
 
-        _draft = MacroEditorDraft.From(initialSettings);
+        MultiEditorHost.Content = new MultiMacroEditorControl(_draft);
         _draft.Changed += OnDraftChanged;
-        DataContext = _draft;
-
-        ShowRuntimeStatus(runtimeStatus);
-        RefreshValidation();
+        ShowStartupStatus(startupConfiguration);
+        RefreshSaveAvailability();
     }
 
-    public IReadOnlyList<HotkeyKey> HotkeyKeys { get; }
+    internal MultiMacroEditorDraft Draft => _draft;
 
-    public IReadOnlyList<KeyboardKey> OutputKeys { get; }
-
-    private void AddKeyTap_Click(object sender, RoutedEventArgs e)
+    internal void PresentInitialRuntimeStatus(
+        MultiMacroRuntimeStatus status,
+        ApplicationSettings startupSettings)
     {
-        _draft.AddKeyTap();
+        ShowRuntimeStatus(RuntimeStatusPresentation.FromInitial(
+            status,
+            startupSettings));
     }
 
-    private void AddDelay_Click(object sender, RoutedEventArgs e)
+    internal void PresentRuntimeStatusUpdate(
+        MultiMacroRuntimeStatus status,
+        ApplicationSettings startupSettings)
     {
-        _draft.AddDelay();
+        ShowRuntimeStatus(RuntimeStatusPresentation.FromUpdate(
+            status,
+            startupSettings));
     }
 
-    private void RemoveStep_Click(object sender, RoutedEventArgs e)
+    internal void PresentExecutionFailure(
+        MacroId id,
+        Exception exception,
+        ApplicationSettings startupSettings)
     {
-        if (GetStepFromButton(sender) is { } step)
-        {
-            _draft.Remove(step);
-        }
-    }
-
-    private void MoveStepUp_Click(object sender, RoutedEventArgs e)
-    {
-        if (GetStepFromButton(sender) is { } step)
-        {
-            _draft.MoveUp(step);
-        }
-    }
-
-    private void MoveStepDown_Click(object sender, RoutedEventArgs e)
-    {
-        if (GetStepFromButton(sender) is { } step)
-        {
-            _draft.MoveDown(step);
-        }
+        string message = RuntimeStatusPresentation.FormatExecutionFailure(
+            id,
+            exception,
+            startupSettings);
+        RuntimeStatusText.Text = "Runtime execution failed. The configuration was not changed.";
+        RuntimeStatusText.Foreground = Brushes.Firebrick;
+        RuntimeDiagnosticsList.ItemsSource = new[] { message };
+        RuntimeDiagnosticsScrollViewer.Visibility = Visibility.Visible;
     }
 
     private void OnDraftChanged(object? sender, EventArgs e)
     {
         ClearSaveStatus();
-        RefreshValidation();
+        RefreshSaveAvailability();
     }
 
-    private void RefreshValidation()
+    private void RefreshSaveAvailability()
     {
-        ShowValidation(_saveCoordinator.Validate(_draft));
+        SaveButton.IsEnabled = _saveCoordinator.Validate(_draft).IsValid;
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        MacroEditorSaveResult saveResult = _saveCoordinator.Save(_draft);
+        if (!_saveCoordinator.Validate(_draft).IsValid)
+        {
+            RefreshSaveAvailability();
+            return;
+        }
 
-        ShowValidation(saveResult.Validation);
+        if (_requiresRecoveryConfirmation && !_recoverySaveConfirmed)
+        {
+            MessageBoxResult confirmation = MessageBox.Show(
+                "This will replace the settings file that could not be loaded with the current macro configuration. Continue?",
+                "Replace settings file?",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (confirmation != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            _recoverySaveConfirmed = true;
+        }
+
+        MacroEditorSaveResult saveResult = _saveCoordinator.Save(_draft);
 
         switch (saveResult.Status)
         {
             case MacroEditorSaveStatus.Saved:
                 ShowSaveStatus(
-                    "Saved to disk. Changes take effect next time " +
-                    "NovaMacro starts.\n" +
+                    "Saved to disk. Changes take effect after restarting NovaMacro.\n" +
                     _saveCoordinator.SettingsPath,
                     Brushes.ForestGreen);
                 break;
 
             case MacroEditorSaveStatus.Invalid:
                 ClearSaveStatus();
+                RefreshSaveAvailability();
                 break;
 
             case MacroEditorSaveStatus.StorageFailed:
@@ -120,43 +135,35 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowRuntimeStatus(RuntimeStartupStatus runtimeStatus)
+    private void ShowStartupStatus(StartupConfigurationResult startupConfiguration)
     {
-        RuntimeStatusText.Text = runtimeStatus.Message;
-        RuntimeStatusText.Foreground = runtimeStatus.IsActive
-            ? Brushes.ForestGreen
-            : Brushes.Firebrick;
-
-        RuntimeDiagnosticsList.ItemsSource = runtimeStatus.Diagnostics;
-        RuntimeDiagnosticsScrollViewer.Visibility =
-            runtimeStatus.Diagnostics.Count == 0
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-    }
-
-    private void ShowValidation(MacroEditorValidationResult validationResult)
-    {
-        SaveButton.IsEnabled = validationResult.IsValid;
-
-        if (validationResult.IsValid)
+        if (startupConfiguration.RuntimeSettings is not null)
         {
-            ValidationStatusText.Text = "Configuration valid.";
-            ValidationStatusText.Foreground = Brushes.ForestGreen;
-            ValidationErrorsList.ItemsSource = Array.Empty<string>();
-            ValidationErrorsList.Visibility = Visibility.Collapsed;
+            RuntimeStatusText.Text = "Preparing runtime from the startup configuration.";
+            RuntimeStatusText.Foreground = Brushes.DimGray;
+            RuntimeDiagnosticsScrollViewer.Visibility = Visibility.Collapsed;
             return;
         }
 
-        ShowValidationErrors(
-            validationResult.ErrorMessages);
+        RuntimeStatusText.Text = startupConfiguration.Status ==
+            StartupConfigurationStatus.InvalidRecovery
+            ? "Runtime inactive: saved configuration could not be loaded."
+            : "Runtime inactive: settings storage is unavailable.";
+        RuntimeStatusText.Foreground = Brushes.Firebrick;
+        RuntimeDiagnosticsList.ItemsSource = startupConfiguration.Diagnostics;
+        RuntimeDiagnosticsScrollViewer.Visibility = Visibility.Visible;
     }
 
-    private void ShowValidationErrors(IEnumerable<string> messages)
+    private void ShowRuntimeStatus(RuntimeStatusPresentation presentation)
     {
-        ValidationStatusText.Text = "Configuration needs attention.";
-        ValidationStatusText.Foreground = Brushes.Firebrick;
-        ValidationErrorsList.ItemsSource = messages.ToArray();
-        ValidationErrorsList.Visibility = Visibility.Visible;
+        RuntimeStatusText.Text = presentation.Message;
+        RuntimeStatusText.Foreground = presentation.IsHealthy
+            ? Brushes.ForestGreen
+            : Brushes.Firebrick;
+        RuntimeDiagnosticsList.ItemsSource = presentation.Diagnostics;
+        RuntimeDiagnosticsScrollViewer.Visibility = presentation.Diagnostics.Count == 0
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void ShowSaveStatus(string message, Brush foreground)
@@ -170,12 +177,5 @@ public partial class MainWindow : Window
     {
         SaveStatusText.Text = string.Empty;
         SaveStatusText.Visibility = Visibility.Collapsed;
-    }
-
-    private static MacroStepEditorDraft? GetStepFromButton(object sender)
-    {
-        return sender is Button { Tag: MacroStepEditorDraft step }
-            ? step
-            : null;
     }
 }

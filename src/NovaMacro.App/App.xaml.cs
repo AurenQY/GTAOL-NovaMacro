@@ -11,8 +11,10 @@ namespace NovaMacro.App;
 
 public partial class App : Application
 {
-    private MacroHotkeyCoordinator? _coordinator;
+    private MultiMacroHotkeyCoordinator? _coordinator;
     private SingleInstanceGuard? _instanceGuard;
+    private ApplicationSettings? _runtimeSettings;
+    private bool _isShuttingDown;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -26,7 +28,6 @@ public partial class App : Application
                 "NovaMacro",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
-
             Shutdown(-1);
             return;
         }
@@ -36,169 +37,213 @@ public partial class App : Application
         try
         {
             var settingsStore = new JsonSettingsStore();
-            var startupCoordinator =
-                new StartupConfigurationCoordinator(settingsStore);
+            var startupCoordinator = new StartupConfigurationCoordinator(settingsStore);
             StartupConfigurationResult startupConfiguration =
                 startupCoordinator.Resolve();
-
-            var editorSaveCoordinator =
-                new MacroEditorSaveCoordinator(settingsStore);
-
-            RuntimeStartupStatus runtimeStatus =
-                ResolveRuntimeStatus(startupConfiguration);
-
-            var mainWindow = new MainWindow(
-                editorSaveCoordinator,
-                startupConfiguration.InitialEditorSettings,
-                runtimeStatus);
+            var saveCoordinator = new MacroEditorSaveCoordinator(settingsStore);
+            var mainWindow = new MainWindow(saveCoordinator, startupConfiguration);
             MainWindow = mainWindow;
+
+            if (startupConfiguration.RuntimeSettings is { } runtimeSettings)
+            {
+                ActivateRuntime(runtimeSettings, mainWindow);
+            }
+
             mainWindow.Show();
         }
         catch (Exception exception)
         {
-            MacroHotkeyCoordinator? coordinatorToDispose = _coordinator;
-            _coordinator = null;
-
-            DisposeAfterStartupFailure(coordinatorToDispose, null);
+            DisposeRuntime();
 
             MessageBox.Show(
-                "NovaMacro could not start.\n\n" +
-                exception.Message,
+                "NovaMacro could not start.\n\n" + exception.Message,
                 "NovaMacro startup failed",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
-
             Shutdown(-1);
         }
     }
 
-    private RuntimeStartupStatus ResolveRuntimeStatus(
-        StartupConfigurationResult startupConfiguration)
+    private void ActivateRuntime(
+        ApplicationSettings runtimeSettings,
+        MainWindow mainWindow)
     {
-        ApplicationSettings? runtimeSettings =
-            startupConfiguration.RuntimeSettings;
+        var keyboardOutput = new WindowsKeyboardOutput();
+        var delay = new TaskDelay();
+        var macroRunner = new MacroRunner(keyboardOutput, delay);
+        var coordinator = new MultiMacroHotkeyCoordinator(
+            runtimeSettings,
+            () => new WindowsGlobalHotkeyService(),
+            macroRunner);
 
-        if (runtimeSettings is null)
-        {
-            return RuntimeStartupStatus.Recovery(startupConfiguration);
-        }
-
-        MacroDefinition runtimeMacro =
-            SingleMacroCompatibility.RequireEnabled(runtimeSettings);
-
-        if (TryActivateRuntime(runtimeMacro, out Exception? error))
-        {
-            return RuntimeStartupStatus.Active(startupConfiguration);
-        }
-
-        return RuntimeStartupStatus.ActivationFailed(
-            runtimeMacro.Hotkey,
-            error!);
-    }
-
-    private bool TryActivateRuntime(
-        MacroDefinition runtimeMacro,
-        out Exception? activationError)
-    {
-        WindowsGlobalHotkeyService? hotkeyService = null;
-        MacroHotkeyCoordinator? coordinator = null;
+        _runtimeSettings = runtimeSettings;
+        coordinator.ExecutionFailed += OnRuntimeExecutionFailed;
 
         try
         {
-            var keyboardOutput = new WindowsKeyboardOutput();
-            var delay = new TaskDelay();
-            var macroRunner = new MacroRunner(keyboardOutput, delay);
-
-            hotkeyService = new WindowsGlobalHotkeyService();
-            coordinator = new MacroHotkeyCoordinator(
-                hotkeyService,
-                macroRunner,
-                runtimeMacro.Sequence,
-                ReportRuntimeFailure);
-
-            // The coordinator owns the hotkey service after construction.
-            hotkeyService = null;
-
-            coordinator.Start(runtimeMacro.Hotkey);
+            MultiMacroRuntimeStatus status = StartAndPresentInitialRuntimeStatus(
+                coordinator,
+                initialStatus => mainWindow.PresentInitialRuntimeStatus(
+                    initialStatus,
+                    runtimeSettings));
             _coordinator = coordinator;
-            coordinator = null;
-            activationError = null;
-            return true;
+            AttachRuntimeStatusUpdates(
+                coordinator,
+                status,
+                OnRuntimeStatusChanged);
         }
-        catch (Exception exception)
+        catch
         {
-            _coordinator = null;
-            DisposeAfterStartupFailure(coordinator, hotkeyService);
-            activationError = exception;
-            return false;
+            coordinator.StatusChanged -= OnRuntimeStatusChanged;
+            coordinator.ExecutionFailed -= OnRuntimeExecutionFailed;
+            coordinator.Dispose();
+            _runtimeSettings = null;
+            throw;
+        }
+    }
+
+    private void OnRuntimeStatusChanged(MultiMacroRuntimeStatus status)
+    {
+        if (_runtimeSettings is not { } runtimeSettings)
+        {
+            return;
+        }
+
+        DispatchToMainWindow(window =>
+            window.PresentRuntimeStatusUpdate(status, runtimeSettings));
+    }
+
+    private void OnRuntimeExecutionFailed(MacroId id, Exception exception)
+    {
+        Trace.TraceError("NovaMacro runtime execution failed: {0}", exception);
+
+        if (_runtimeSettings is not { } runtimeSettings)
+        {
+            return;
+        }
+
+        DispatchToMainWindow(window =>
+            window.PresentExecutionFailure(id, exception, runtimeSettings));
+    }
+
+    private void DispatchToMainWindow(Action<MainWindow> update)
+    {
+        if (_isShuttingDown || Dispatcher.HasShutdownStarted ||
+            Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = Dispatcher.BeginInvoke(() =>
+            {
+                if (!_isShuttingDown && MainWindow is MainWindow window)
+                {
+                    update(window);
+                }
+            });
+        }
+        catch (InvalidOperationException)
+        {
+            // The dispatcher began shutting down after the guard above.
+        }
+    }
+
+    internal static bool ShouldPresentCurrentStatusAsUpdate(
+        MultiMacroRuntimeStatus initialStatus,
+        MultiMacroRuntimeStatus? currentStatus)
+    {
+        ArgumentNullException.ThrowIfNull(initialStatus);
+
+        return initialStatus.State != MultiMacroRuntimeState.ServiceUnavailable &&
+            currentStatus?.State == MultiMacroRuntimeState.ServiceUnavailable;
+    }
+
+    internal static MultiMacroRuntimeStatus StartAndPresentInitialRuntimeStatus(
+        MultiMacroHotkeyCoordinator coordinator,
+        Action<MultiMacroRuntimeStatus> presentInitial)
+    {
+        ArgumentNullException.ThrowIfNull(coordinator);
+        ArgumentNullException.ThrowIfNull(presentInitial);
+
+        MultiMacroRuntimeStatus status = coordinator.Start();
+        presentInitial(status);
+        return status;
+    }
+
+    internal static void AttachRuntimeStatusUpdates(
+        MultiMacroHotkeyCoordinator coordinator,
+        MultiMacroRuntimeStatus initialStatus,
+        Action<MultiMacroRuntimeStatus> presentUpdate)
+    {
+        ArgumentNullException.ThrowIfNull(coordinator);
+        ArgumentNullException.ThrowIfNull(initialStatus);
+        ArgumentNullException.ThrowIfNull(presentUpdate);
+
+        coordinator.StatusChanged += presentUpdate;
+        MultiMacroRuntimeStatus? currentStatus = coordinator.CurrentStatus;
+        if (ShouldPresentCurrentStatusAsUpdate(initialStatus, currentStatus))
+        {
+            presentUpdate(currentStatus!);
         }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        try
-        {
-            _coordinator?.Dispose();
-        }
-        catch (Exception exception)
-        {
-            Trace.TraceError(
-                "NovaMacro shutdown cleanup failed: {0}",
-                exception);
-        }
-        finally
-        {
-            _coordinator = null;
-        }
+        _isShuttingDown = true;
 
         try
         {
-            base.OnExit(e);
+            DisposeRuntime();
         }
         finally
         {
             try
             {
-                _instanceGuard?.Dispose();
-            }
-            catch (Exception exception)
-            {
-                Trace.TraceError(
-                    "NovaMacro single-instance cleanup failed: {0}",
-                    exception);
+                base.OnExit(e);
             }
             finally
             {
-                _instanceGuard = null;
+                try
+                {
+                    _instanceGuard?.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    Trace.TraceError(
+                        "NovaMacro single-instance cleanup failed: {0}",
+                        exception);
+                }
+                finally
+                {
+                    _instanceGuard = null;
+                }
             }
         }
     }
 
-    private static void DisposeAfterStartupFailure(
-        MacroHotkeyCoordinator? coordinator,
-        WindowsGlobalHotkeyService? hotkeyService)
+    private void DisposeRuntime()
     {
+        MultiMacroHotkeyCoordinator? coordinator = _coordinator;
+        _coordinator = null;
+        _runtimeSettings = null;
+
+        if (coordinator is null)
+        {
+            return;
+        }
+
+        coordinator.StatusChanged -= OnRuntimeStatusChanged;
+        coordinator.ExecutionFailed -= OnRuntimeExecutionFailed;
+
         try
         {
-            if (coordinator is not null)
-            {
-                coordinator.Dispose();
-            }
-            else
-            {
-                hotkeyService?.Dispose();
-            }
+            coordinator.Dispose();
         }
-        catch (Exception cleanupException)
+        catch (Exception exception)
         {
-            Trace.TraceError(
-                "NovaMacro startup cleanup failed: {0}",
-                cleanupException);
+            Trace.TraceError("NovaMacro runtime cleanup failed: {0}", exception);
         }
-    }
-
-    private static void ReportRuntimeFailure(Exception exception)
-    {
-        Trace.TraceError("NovaMacro runtime failure: {0}", exception);
     }
 }

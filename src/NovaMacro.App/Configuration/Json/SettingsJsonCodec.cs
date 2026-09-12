@@ -8,22 +8,40 @@ namespace NovaMacro.App.Configuration.Json;
 
 internal static class SettingsJsonCodec
 {
-    private const int CurrentVersion = 1;
+    private const int V1Version = 1;
+    private const int V2Version = 2;
     private const int MaximumJsonDepth = 32;
     private const long MaximumTimeSpanMilliseconds =
         long.MaxValue / TimeSpan.TicksPerMillisecond;
 
-    private static readonly IReadOnlySet<string> TopLevelProperties =
+    private static readonly IReadOnlySet<string> V1TopLevelProperties =
         new HashSet<string>(StringComparer.Ordinal)
         {
             "version",
             "macro"
         };
 
-    private static readonly IReadOnlySet<string> MacroProperties =
+    private static readonly IReadOnlySet<string> V1MacroProperties =
         new HashSet<string>(StringComparer.Ordinal)
         {
             "name",
+            "hotkey",
+            "steps"
+        };
+
+    private static readonly IReadOnlySet<string> V2TopLevelProperties =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "version",
+            "macros"
+        };
+
+    private static readonly IReadOnlySet<string> V2MacroProperties =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "id",
+            "name",
+            "enabled",
             "hotkey",
             "steps"
         };
@@ -49,7 +67,57 @@ internal static class SettingsJsonCodec
             "milliseconds"
         };
 
+    // Dormant transition API. Production store/startup remain V1-only until
+    // MULTI-INTEGRATION-01 explicitly switches to this reader.
+    internal static SettingsJsonReadResult ReadV1OrV2(string json)
+    {
+        return ReadCore(json, TryParseV1OrV2Candidate);
+    }
+
     internal static SettingsJsonReadResult Read(string json)
+    {
+        return ReadCore(json, TryParseV1Candidate);
+    }
+
+    internal static string WriteV2(ApplicationSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        var buffer = new ArrayBufferWriter<byte>();
+
+        using (var writer = new Utf8JsonWriter(
+            buffer,
+            new JsonWriterOptions
+            {
+                Indented = true,
+                SkipValidation = false
+            }))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("version", V2Version);
+            writer.WritePropertyName("macros");
+            writer.WriteStartArray();
+
+            foreach (MacroDefinition macro in settings.Macros)
+            {
+                WriteV2Macro(writer, macro);
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    private delegate bool CandidateParser(
+        JsonElement root,
+        out ApplicationSettingsCandidate? candidate,
+        out SettingsJsonError? error);
+
+    private static SettingsJsonReadResult ReadCore(
+        string json,
+        CandidateParser parser)
     {
         ArgumentNullException.ThrowIfNull(json);
 
@@ -77,7 +145,7 @@ internal static class SettingsJsonCodec
 
         using (document)
         {
-            if (!TryParseCandidate(
+            if (!parser(
                     document.RootElement,
                     out ApplicationSettingsCandidate? candidate,
                     out SettingsJsonError? error))
@@ -108,7 +176,7 @@ internal static class SettingsJsonCodec
             }))
         {
             writer.WriteStartObject();
-            writer.WriteNumber("version", CurrentVersion);
+            writer.WriteNumber("version", V1Version);
             writer.WritePropertyName("macro");
             WriteMacro(writer, macro);
             writer.WriteEndObject();
@@ -134,7 +202,7 @@ internal static class SettingsJsonCodec
         return macro;
     }
 
-    private static bool TryParseCandidate(
+    private static bool TryParseV1Candidate(
         JsonElement root,
         out ApplicationSettingsCandidate? candidate,
         out SettingsJsonError? error)
@@ -144,7 +212,7 @@ internal static class SettingsJsonCodec
         if (!TryReadKnownObject(
                 root,
                 string.Empty,
-                TopLevelProperties,
+                V1TopLevelProperties,
                 out Dictionary<string, JsonElement> properties,
                 out error))
         {
@@ -166,7 +234,7 @@ internal static class SettingsJsonCodec
             return false;
         }
 
-        if (version != CurrentVersion)
+        if (version != V1Version)
         {
             error = new SettingsJsonError(
                 SettingsJsonErrorCode.UnsupportedVersion,
@@ -181,7 +249,10 @@ internal static class SettingsJsonCodec
                 string.Empty,
                 out JsonElement macroElement,
                 out error) ||
-            !TryParseMacro(macroElement, out MacroDefinitionCandidate? macro, out error))
+            !TryParseV1Macro(
+                macroElement,
+                out MacroDefinitionCandidate? macro,
+                out error))
         {
             return false;
         }
@@ -191,7 +262,101 @@ internal static class SettingsJsonCodec
         return true;
     }
 
-    private static bool TryParseMacro(
+    private static bool TryParseV1OrV2Candidate(
+        JsonElement root,
+        out ApplicationSettingsCandidate? candidate,
+        out SettingsJsonError? error)
+    {
+        candidate = null;
+
+        if (!TryCollectObjectProperties(
+                root,
+                string.Empty,
+                out Dictionary<string, JsonElement> properties,
+                out error) ||
+            !TryGetRequiredProperty(
+                properties,
+                "version",
+                string.Empty,
+                out JsonElement versionElement,
+                out error) ||
+            !TryReadInt64(versionElement, "version", out long version, out error))
+        {
+            return false;
+        }
+
+        if (version == V1Version)
+        {
+            return TryParseV1Candidate(root, out candidate, out error);
+        }
+
+        if (version == V2Version)
+        {
+            return TryParseV2Candidate(root, properties, out candidate, out error);
+        }
+
+        error = new SettingsJsonError(
+            SettingsJsonErrorCode.UnsupportedVersion,
+            "version",
+            $"Settings version '{version}' is not supported.");
+        return false;
+    }
+
+    private static bool TryParseV2Candidate(
+        JsonElement root,
+        IReadOnlyDictionary<string, JsonElement> properties,
+        out ApplicationSettingsCandidate? candidate,
+        out SettingsJsonError? error)
+    {
+        candidate = null;
+
+        if (!TryRejectUnknownProperties(
+                root,
+                string.Empty,
+                V2TopLevelProperties,
+                out error) ||
+            !TryGetRequiredProperty(
+                properties,
+                "macros",
+                string.Empty,
+                out JsonElement macrosElement,
+                out error))
+        {
+            return false;
+        }
+
+        if (macrosElement.ValueKind != JsonValueKind.Array)
+        {
+            error = Expected(
+                SettingsJsonErrorCode.ExpectedArray,
+                "macros",
+                "an array");
+            return false;
+        }
+
+        var macros = new List<MacroDefinitionCandidate?>();
+        int index = 0;
+
+        foreach (JsonElement macroElement in macrosElement.EnumerateArray())
+        {
+            if (!TryParseV2Macro(
+                    macroElement,
+                    $"macros[{index}]",
+                    out MacroDefinitionCandidate? macro,
+                    out error))
+            {
+                return false;
+            }
+
+            macros.Add(macro);
+            index++;
+        }
+
+        candidate = new ApplicationSettingsCandidate(macros);
+        return true;
+    }
+
+    private static bool TryParseV1Macro(
         JsonElement element,
         out MacroDefinitionCandidate? macro,
         out SettingsJsonError? error)
@@ -201,37 +366,20 @@ internal static class SettingsJsonCodec
         if (!TryReadKnownObject(
                 element,
                 "macro",
-                MacroProperties,
+                V1MacroProperties,
                 out Dictionary<string, JsonElement> properties,
                 out error))
         {
             return false;
         }
 
-        if (!TryGetRequiredProperty(
+        if (!TryParseMacroContent(
                 properties,
-                "name",
                 "macro",
-                out JsonElement nameElement,
-                out error) ||
-            !TryReadString(nameElement, "macro.name", out string? name, out error) ||
-            !TryGetRequiredProperty(
-                properties,
-                "hotkey",
-                "macro",
-                out JsonElement hotkeyElement,
-                out error) ||
-            !TryParseHotkey(
-                hotkeyElement,
+                out string? name,
                 out KeyboardHotkey? hotkey,
-                out error) ||
-            !TryGetRequiredProperty(
-                properties,
-                "steps",
-                "macro",
-                out JsonElement stepsElement,
-                out error) ||
-            !TryParseSteps(stepsElement, out MacroSequence? sequence, out error))
+                out MacroSequence? sequence,
+                out error))
         {
             return false;
         }
@@ -245,8 +393,100 @@ internal static class SettingsJsonCodec
         return true;
     }
 
+    private static bool TryParseV2Macro(
+        JsonElement element,
+        string path,
+        out MacroDefinitionCandidate? macro,
+        out SettingsJsonError? error)
+    {
+        macro = null;
+
+        if (!TryReadKnownObject(
+                element,
+                path,
+                V2MacroProperties,
+                out Dictionary<string, JsonElement> properties,
+                out error) ||
+            !TryGetRequiredProperty(
+                properties,
+                "id",
+                path,
+                out JsonElement idElement,
+                out error) ||
+            !TryParseMacroId(idElement, $"{path}.id", out MacroId? id, out error) ||
+            !TryGetRequiredProperty(
+                properties,
+                "enabled",
+                path,
+                out JsonElement enabledElement,
+                out error) ||
+            !TryReadBoolean(
+                enabledElement,
+                $"{path}.enabled",
+                out bool enabled,
+                out error) ||
+            !TryParseMacroContent(
+                properties,
+                path,
+                out string? name,
+                out KeyboardHotkey? hotkey,
+                out MacroSequence? sequence,
+                out error))
+        {
+            return false;
+        }
+
+        macro = new MacroDefinitionCandidate(id, name, enabled, hotkey, sequence);
+        return true;
+    }
+
+    private static bool TryParseMacroContent(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        string path,
+        out string? name,
+        out KeyboardHotkey? hotkey,
+        out MacroSequence? sequence,
+        out SettingsJsonError? error)
+    {
+        name = null;
+        hotkey = null;
+        sequence = null;
+
+        if (!TryGetRequiredProperty(
+                properties,
+                "name",
+                path,
+                out JsonElement nameElement,
+                out error) ||
+            !TryReadString(nameElement, $"{path}.name", out name, out error) ||
+            !TryGetRequiredProperty(
+                properties,
+                "hotkey",
+                path,
+                out JsonElement hotkeyElement,
+                out error) ||
+            !TryParseHotkey(
+                hotkeyElement,
+                $"{path}.hotkey",
+                out hotkey,
+                out error) ||
+            !TryGetRequiredProperty(
+                properties,
+                "steps",
+                path,
+                out JsonElement stepsElement,
+                out error) ||
+            !TryParseSteps(stepsElement, $"{path}.steps", out sequence, out error))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     private static bool TryParseHotkey(
         JsonElement element,
+        string path,
         out KeyboardHotkey? hotkey,
         out SettingsJsonError? error)
     {
@@ -254,7 +494,7 @@ internal static class SettingsJsonCodec
 
         if (!TryReadKnownObject(
                 element,
-                "macro.hotkey",
+                path,
                 HotkeyProperties,
                 out Dictionary<string, JsonElement> properties,
                 out error))
@@ -265,12 +505,12 @@ internal static class SettingsJsonCodec
         if (!TryGetRequiredProperty(
                 properties,
                 "key",
-                "macro.hotkey",
+                path,
                 out JsonElement keyElement,
                 out error) ||
             !TryReadString(
                 keyElement,
-                "macro.hotkey.key",
+                $"{path}.key",
                 out string? keyToken,
                 out error))
         {
@@ -281,7 +521,7 @@ internal static class SettingsJsonCodec
         {
             error = new SettingsJsonError(
                 SettingsJsonErrorCode.UnknownHotkeyKey,
-                "macro.hotkey.key",
+                $"{path}.key",
                 $"Hotkey key token '{keyToken}' is not supported.");
             return false;
         }
@@ -289,11 +529,12 @@ internal static class SettingsJsonCodec
         if (!TryGetRequiredProperty(
                 properties,
                 "modifiers",
-                "macro.hotkey",
+                path,
                 out JsonElement modifiersElement,
                 out error) ||
             !TryParseModifiers(
                 modifiersElement,
+                $"{path}.modifiers",
                 out HotkeyModifiers modifiers,
                 out error))
         {
@@ -306,6 +547,7 @@ internal static class SettingsJsonCodec
 
     private static bool TryParseModifiers(
         JsonElement element,
+        string path,
         out HotkeyModifiers modifiers,
         out SettingsJsonError? error)
     {
@@ -316,7 +558,7 @@ internal static class SettingsJsonCodec
         {
             error = Expected(
                 SettingsJsonErrorCode.ExpectedArray,
-                "macro.hotkey.modifiers",
+                path,
                 "an array");
             return false;
         }
@@ -326,11 +568,11 @@ internal static class SettingsJsonCodec
 
         foreach (JsonElement modifierElement in element.EnumerateArray())
         {
-            string path = $"macro.hotkey.modifiers[{index}]";
+            string modifierPath = $"{path}[{index}]";
 
             if (!TryReadString(
                     modifierElement,
-                    path,
+                    modifierPath,
                     out string? token,
                     out error))
             {
@@ -341,7 +583,7 @@ internal static class SettingsJsonCodec
             {
                 error = new SettingsJsonError(
                     SettingsJsonErrorCode.UnknownModifier,
-                    path,
+                    modifierPath,
                     $"Modifier token '{token}' is not supported.");
                 return false;
             }
@@ -350,7 +592,7 @@ internal static class SettingsJsonCodec
             {
                 error = new SettingsJsonError(
                     SettingsJsonErrorCode.DuplicateModifier,
-                    path,
+                    modifierPath,
                     $"Modifier token '{token}' is duplicated.");
                 return false;
             }
@@ -364,6 +606,7 @@ internal static class SettingsJsonCodec
 
     private static bool TryParseSteps(
         JsonElement element,
+        string path,
         out MacroSequence? sequence,
         out SettingsJsonError? error)
     {
@@ -374,7 +617,7 @@ internal static class SettingsJsonCodec
         {
             error = Expected(
                 SettingsJsonErrorCode.ExpectedArray,
-                "macro.steps",
+                path,
                 "an array");
             return false;
         }
@@ -384,7 +627,11 @@ internal static class SettingsJsonCodec
 
         foreach (JsonElement stepElement in element.EnumerateArray())
         {
-            if (!TryParseStep(stepElement, index, out MacroStep? step, out error))
+            if (!TryParseStep(
+                    stepElement,
+                    $"{path}[{index}]",
+                    out MacroStep? step,
+                    out error))
             {
                 return false;
             }
@@ -399,13 +646,11 @@ internal static class SettingsJsonCodec
 
     private static bool TryParseStep(
         JsonElement element,
-        int index,
+        string path,
         out MacroStep? step,
         out SettingsJsonError? error)
     {
         step = null;
-        string path = $"macro.steps[{index}]";
-
         if (!TryCollectObjectProperties(
                 element,
                 path,
@@ -646,6 +891,54 @@ internal static class SettingsJsonCodec
         return false;
     }
 
+    private static bool TryReadBoolean(
+        JsonElement element,
+        string path,
+        out bool value,
+        out SettingsJsonError? error)
+    {
+        if (element.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            value = element.GetBoolean();
+            error = null;
+            return true;
+        }
+
+        value = false;
+        error = Expected(
+            SettingsJsonErrorCode.ExpectedBoolean,
+            path,
+            "a boolean");
+        return false;
+    }
+
+    private static bool TryParseMacroId(
+        JsonElement element,
+        string path,
+        out MacroId? id,
+        out SettingsJsonError? error)
+    {
+        id = null;
+
+        if (!TryReadString(element, path, out string? text, out error))
+        {
+            return false;
+        }
+
+        if (!Guid.TryParseExact(text, "D", out Guid value) ||
+            value == Guid.Empty)
+        {
+            error = new SettingsJsonError(
+                SettingsJsonErrorCode.InvalidMacroId,
+                path,
+                "Macro ID must be a non-empty GUID in D format.");
+            return false;
+        }
+
+        id = new MacroId(value);
+        return true;
+    }
+
     private static bool TryReadInt64(
         JsonElement element,
         string path,
@@ -740,13 +1033,35 @@ internal static class SettingsJsonCodec
         writer.WriteStartObject();
         writer.WriteString("name", macro.Name);
         writer.WritePropertyName("hotkey");
-        WriteHotkey(writer, macro.Hotkey);
+        WriteHotkey(writer, macro.Hotkey, V1Version);
         writer.WritePropertyName("steps");
         writer.WriteStartArray();
 
         foreach (MacroStep step in macro.Sequence.Steps)
         {
-            WriteStep(writer, step);
+            WriteStep(writer, step, V1Version);
+        }
+
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+    }
+
+    private static void WriteV2Macro(
+        Utf8JsonWriter writer,
+        MacroDefinition macro)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("id", macro.Id.ToString());
+        writer.WriteString("name", macro.Name);
+        writer.WriteBoolean("enabled", macro.Enabled);
+        writer.WritePropertyName("hotkey");
+        WriteHotkey(writer, macro.Hotkey, V2Version);
+        writer.WritePropertyName("steps");
+        writer.WriteStartArray();
+
+        foreach (MacroStep step in macro.Sequence.Steps)
+        {
+            WriteStep(writer, step, V2Version);
         }
 
         writer.WriteEndArray();
@@ -755,12 +1070,13 @@ internal static class SettingsJsonCodec
 
     private static void WriteHotkey(
         Utf8JsonWriter writer,
-        KeyboardHotkey hotkey)
+        KeyboardHotkey hotkey,
+        int version)
     {
         if (!HotkeyKeyTokenMapper.TryFormat(hotkey.Key, out string? keyToken))
         {
             throw new InvalidOperationException(
-                $"Hotkey key '{hotkey.Key}' cannot be written as V1 JSON.");
+                $"Hotkey key '{hotkey.Key}' cannot be written as V{version} JSON.");
         }
 
         writer.WriteStartObject();
@@ -787,7 +1103,10 @@ internal static class SettingsJsonCodec
         writer.WriteEndObject();
     }
 
-    private static void WriteStep(Utf8JsonWriter writer, MacroStep step)
+    private static void WriteStep(
+        Utf8JsonWriter writer,
+        MacroStep step,
+        int version)
     {
         writer.WriteStartObject();
 
@@ -799,7 +1118,7 @@ internal static class SettingsJsonCodec
                         out string? keyToken))
                 {
                     throw new InvalidOperationException(
-                        $"Output key '{keyTap.Key}' cannot be written as V1 JSON.");
+                        $"Output key '{keyTap.Key}' cannot be written as V{version} JSON.");
                 }
 
                 writer.WriteString("type", "keyTap");
@@ -811,7 +1130,8 @@ internal static class SettingsJsonCodec
                     delay.Duration.Ticks % TimeSpan.TicksPerMillisecond != 0)
                 {
                     throw new InvalidOperationException(
-                        "V1 JSON supports only non-negative whole-millisecond delays.");
+                        $"V{version} JSON supports only non-negative " +
+                        "whole-millisecond delays.");
                 }
 
                 writer.WriteString("type", "delay");
@@ -823,7 +1143,7 @@ internal static class SettingsJsonCodec
             default:
                 throw new InvalidOperationException(
                     $"Macro step type '{step.GetType().Name}' cannot be written " +
-                    "as V1 JSON.");
+                    $"as V{version} JSON.");
         }
 
         writer.WriteEndObject();

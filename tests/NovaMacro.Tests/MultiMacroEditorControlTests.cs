@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using NovaMacro.App.Configuration;
 using NovaMacro.App.Editor;
+using NovaMacro.App.Presets;
 using NovaMacro.Core;
 using NovaMacro.Windows;
 
@@ -161,6 +162,112 @@ public sealed class MultiMacroEditorControlTests
             Assert.Contains(KeyboardKey.ArrowUp, control.OutputKeys);
             Assert.DoesNotContain(control.OutputKeys,
                 key => IsFunctionKeyToken(key.ToString()));
+        });
+    }
+
+    [Fact]
+    public void EmptySurface_AddFromPresetAddsAndSelectsFirstOrdinaryMacro()
+    {
+        RunInSta(() =>
+        {
+            var draft = MultiMacroEditorDraft.From(
+                new ApplicationSettings(Array.Empty<MacroDefinition>()));
+            var control = new MultiMacroEditorControl(draft);
+            Arrange(control);
+            ComboBox selector = Assert.IsType<ComboBox>(
+                control.FindName("PresetSelector"));
+            Button addFromPreset = Assert.IsType<Button>(
+                control.FindName("AddFromPresetButton"));
+            BuiltInPresetDefinition preset = Assert.IsType<BuiltInPresetDefinition>(
+                selector.SelectedItem);
+            ContentControl editor = FindVisualDescendant<ContentControl>(
+                control,
+                content => content.GetType() == typeof(ContentControl) &&
+                    content.ContentTemplate is not null);
+            Assert.Equal("ABC Test", preset.ToString());
+
+            addFromPreset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Arrange(control);
+
+            MacroEditorDraft added = Assert.Single(draft.Macros);
+            Assert.Same(added, draft.SelectedMacro);
+            Assert.Same(added, editor.Content);
+            Assert.Equal(preset.Name, added.Name);
+            Assert.NotEqual(SingleMacroCompatibility.LegacyMacroId, added.Id);
+        });
+    }
+
+    [Fact]
+    public void AddFromPreset_AppendsRepeatedCopiesAndKeepsOrdinaryAddSeparate()
+    {
+        RunInSta(() =>
+        {
+            MultiMacroEditorDraft draft = MultiMacroEditorDraft.From(Settings());
+            MacroId[] originalIds = draft.Macros.Select(macro => macro.Id).ToArray();
+            var control = new MultiMacroEditorControl(draft);
+            Arrange(control);
+            Button addMacro = FindVisualDescendant<Button>(
+                control,
+                button => Equals(button.Content, "Add Macro"));
+            Button addFromPreset = Assert.IsType<Button>(
+                control.FindName("AddFromPresetButton"));
+
+            addFromPreset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            addFromPreset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            addMacro.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Arrange(control);
+
+            Assert.Equal(originalIds, draft.Macros.Take(3).Select(macro => macro.Id));
+            Assert.Equal(
+                new[] { "ABC Test", "ABC Test", "New Macro" },
+                draft.Macros.Skip(3).Select(macro => macro.Name));
+            Assert.False(draft.Macros[^1].Enabled);
+            Assert.Same(draft.Macros[^1], draft.SelectedMacro);
+        });
+    }
+
+    [Fact]
+    public void AddFromPreset_NoSelectionIsASafeNoOp()
+    {
+        RunInSta(() =>
+        {
+            var draft = MultiMacroEditorDraft.From(
+                new ApplicationSettings(Array.Empty<MacroDefinition>()));
+            var control = new MultiMacroEditorControl(draft);
+            Arrange(control);
+            ComboBox selector = Assert.IsType<ComboBox>(
+                control.FindName("PresetSelector"));
+            Button addFromPreset = Assert.IsType<Button>(
+                control.FindName("AddFromPresetButton"));
+            selector.SelectedItem = null;
+
+            addFromPreset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Empty(draft.Macros);
+            Assert.Null(draft.SelectedMacro);
+        });
+    }
+
+    [Fact]
+    public void PresetActions_FitInsideTheMacroPane()
+    {
+        RunInSta(() =>
+        {
+            var control = new MultiMacroEditorControl();
+            Arrange(control);
+            StackPanel actions = Assert.IsType<StackPanel>(
+                control.FindName("MacroActionsPanel"));
+            ComboBox selector = Assert.IsType<ComboBox>(
+                control.FindName("PresetSelector"));
+            Button addFromPreset = Assert.IsType<Button>(
+                control.FindName("AddFromPresetButton"));
+            Rect selectorBounds = selector.TransformToAncestor(actions)
+                .TransformBounds(new Rect(selector.RenderSize));
+            Rect buttonBounds = addFromPreset.TransformToAncestor(actions)
+                .TransformBounds(new Rect(addFromPreset.RenderSize));
+
+            Assert.True(selectorBounds.Left >= 0);
+            Assert.True(buttonBounds.Right <= actions.ActualWidth + 0.01);
         });
     }
 

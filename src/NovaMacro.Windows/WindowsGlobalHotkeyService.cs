@@ -39,6 +39,8 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _messageLoopStopped =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<Exception?> _messageLoopCompletion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly IGlobalHotkeyNativeApi _nativeApi;
     private readonly IHotkeyTriggerWorkScheduler _triggerWorkScheduler;
     private readonly Thread _messageThread;
@@ -95,6 +97,10 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
     public event Action<KeyboardHotkey>? Triggered;
 
     public event Action<KeyboardHotkey, Exception>? TriggerFailed;
+
+    // Null means intentional shutdown; an exception means terminal loop failure.
+    public Task<Exception?> MessageLoopCompletion =>
+        _messageLoopCompletion.Task;
 
     public GlobalHotkeyRegistration Register(KeyboardHotkey hotkey)
     {
@@ -493,6 +499,7 @@ public sealed class WindowsGlobalHotkeyService : IDisposable
             FailPendingCommands(
                 loopFailure ?? new ObjectDisposedException(
                     nameof(WindowsGlobalHotkeyService)));
+            _messageLoopCompletion.TrySetResult(loopFailure);
             _messageLoopStopped.TrySetResult(true);
         }
     }

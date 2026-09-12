@@ -2,6 +2,7 @@ using System.IO;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using NovaMacro.App.Configuration;
 using NovaMacro.App.Configuration.Json;
 using NovaMacro.App.Configuration.Storage;
@@ -131,6 +132,26 @@ public sealed class JsonSettingsStoreTests
 
         ApplicationSettings actual = AssertLoaded(result);
         AssertSettingsEqual(expected, actual);
+    }
+
+    [Fact]
+    public void Load_V2JsonRemainsInvalidUntilIntegration()
+    {
+        using var temporary = new TemporaryDirectory();
+        JsonSettingsStore store = CreateStore(temporary);
+        string v2Json = SettingsJsonCodec.WriteV2(
+            new ApplicationSettings(Array.Empty<MacroDefinition>()));
+
+        WriteCanonical(store, v2Json, includeBom: false);
+
+        SettingsLoadResult result = store.Load();
+
+        Assert.Equal(SettingsLoadStatus.Invalid, result.Status);
+        SettingsJsonReadResult jsonResult = Assert.IsType<SettingsJsonReadResult>(
+            result.JsonReadResult);
+        SettingsJsonError error = Assert.Single(jsonResult.CodecErrors);
+        Assert.Equal(SettingsJsonErrorCode.UnknownProperty, error.Code);
+        Assert.Equal("macros", error.Path);
     }
 
     [Fact]
@@ -273,6 +294,21 @@ public sealed class JsonSettingsStoreTests
         Assert.False(HasUtf8Bom(bytes));
         AssertSettingsEqual(expected, AssertLoaded(store.Load()));
         Assert.Empty(OwnTemporaryFiles(directory));
+    }
+
+    [Fact]
+    public void Save_V1CompatibleSettingsStillWritesV1CanonicalStructure()
+    {
+        using var temporary = new TemporaryDirectory();
+        JsonSettingsStore store = CreateStore(temporary);
+
+        AssertSaveSucceeded(store.Save(RepresentativeSettings("V1 only")));
+
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(store.SettingsPath, Utf8WithoutBom));
+        Assert.Equal(1, document.RootElement.GetProperty("version").GetInt32());
+        Assert.True(document.RootElement.TryGetProperty("macro", out _));
+        Assert.False(document.RootElement.TryGetProperty("macros", out _));
     }
 
     [Fact]

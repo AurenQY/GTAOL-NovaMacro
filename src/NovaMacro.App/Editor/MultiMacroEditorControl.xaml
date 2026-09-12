@@ -53,14 +53,36 @@
                     </TextBlock>
                 </Grid>
 
-                <StackPanel Grid.Row="2" Orientation="Horizontal">
-                    <Button MinWidth="96" Padding="8,5" Click="AddMacro_Click" Content="Add Macro" />
-                    <Button x:Name="DeleteMacroButton"
-                            MinWidth="96"
-                            Margin="8,0,0,0"
-                            Padding="8,5"
-                            Click="DeleteMacro_Click"
-                            Content="Delete Macro" />
+                <StackPanel x:Name="MacroActionsPanel" Grid.Row="2">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button MinWidth="96" Padding="8,5" Click="AddMacro_Click" Content="Add Macro" />
+                        <Button x:Name="DeleteMacroButton"
+                                Grid.Column="1"
+                                MinWidth="96"
+                                Margin="8,0,0,0"
+                                Padding="8,5"
+                                Click="DeleteMacro_Click"
+                                Content="Delete Macro" />
+                    </Grid>
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="PresetSelector"
+                                  Padding="5,3" />
+                        <Button x:Name="AddFromPresetButton"
+                                Grid.Column="1"
+                                MinWidth="112"
+                                Margin="8,0,0,0"
+                                Padding="8,5"
+                                Click="AddFromPreset_Click"
+                                Content="Add from preset" />
+                    </Grid>
                 </StackPanel>
             </Grid>
         </Border>

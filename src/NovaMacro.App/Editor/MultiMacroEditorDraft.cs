@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using NovaMacro.App.Configuration;
+using NovaMacro.App.Presets;
 using NovaMacro.Core;
 using NovaMacro.Windows;
 
@@ -79,22 +80,54 @@ internal sealed class MultiMacroEditorDraft : INotifyPropertyChanged
 
     internal MacroEditorDraft AddMacro()
     {
-        var macro = new MacroEditorDraft(
-            new MacroId(Guid.NewGuid()),
-            enabled: false,
-            name: "New Macro",
-            hotkeyKey: HotkeyKey.F8,
-            control: false,
-            alt: false,
-            shift: false,
-            steps: new[] { MacroStepEditorDraft.KeyTap(KeyboardKey.A) });
+        return Add(
+            new MacroEditorDraft(
+                CreateOrdinaryMacroId(),
+                enabled: false,
+                name: "New Macro",
+                hotkeyKey: HotkeyKey.F8,
+                control: false,
+                alt: false,
+                shift: false,
+                steps: new[] { MacroStepEditorDraft.KeyTap(KeyboardKey.A) }));
+    }
 
+    internal MacroEditorDraft AddFromPreset(BuiltInPresetDefinition preset)
+    {
+        ArgumentNullException.ThrowIfNull(preset);
+
+        var copy = new MacroDefinition(
+            CreateOrdinaryMacroId(),
+            preset.Name,
+            preset.Enabled,
+            preset.Hotkey,
+            preset.Sequence);
+
+        return Add(MacroEditorDraft.From(copy));
+    }
+
+    private MacroEditorDraft Add(MacroEditorDraft macro)
+    {
         macro.Changed += OnMacroChanged;
         _macros.Add(macro);
         OnPropertyChanged(nameof(HasMacros));
         SetSelectedMacro(macro);
         OnChanged();
         return macro;
+    }
+
+    private MacroId CreateOrdinaryMacroId()
+    {
+        MacroId id;
+
+        do
+        {
+            id = new MacroId(Guid.NewGuid());
+        }
+        while (id == SingleMacroCompatibility.LegacyMacroId ||
+            _macros.Any(macro => macro.Id == id));
+
+        return id;
     }
 
     internal bool DeleteSelectedMacro()

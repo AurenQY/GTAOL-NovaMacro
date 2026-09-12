@@ -8,6 +8,32 @@ public sealed class WindowsGlobalHotkeyServiceTerminalTests
     private static readonly TimeSpan SafetyTimeout = TimeSpan.FromSeconds(8);
 
     [Fact]
+    public async Task MessageLoopCompletion_NormalDisposalReturnsNoFailure()
+    {
+        using var native = new FakeGlobalHotkeyNativeApi();
+        var service = new WindowsGlobalHotkeyService(native);
+
+        service.Dispose();
+
+        Assert.Null(await service.MessageLoopCompletion.WaitAsync(SafetyTimeout));
+    }
+
+    [Fact]
+    public async Task MessageLoopCompletion_TerminalFailureReturnsStoredFailure()
+    {
+        using var native = new FakeGlobalHotkeyNativeApi();
+        var service = new WindowsGlobalHotkeyService(native);
+        native.FailNextGetMessage();
+
+        Exception failure = await service.MessageLoopCompletion
+            .WaitAsync(SafetyTimeout) ?? throw new Xunit.Sdk.XunitException(
+                "Expected terminal failure.");
+
+        Assert.IsType<Win32Exception>(failure);
+        Assert.Same(failure, CaptureException(service.Dispose));
+    }
+
+    [Fact]
     public async Task UnexpectedQuit_ClosesAdmissionAndCancelsPendingRelease()
     {
         using var native = new FakeGlobalHotkeyNativeApi();

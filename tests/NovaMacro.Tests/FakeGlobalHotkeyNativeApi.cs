@@ -22,10 +22,13 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
 
     private readonly object _threadIdGate = new();
     private readonly object _keyStateGate = new();
+    private readonly object _postCountGate = new();
     private readonly Dictionary<int, uint> _threadIds = new();
     private readonly Dictionary<int, short> _keyStates = new();
     private readonly ConcurrentDictionary<int, SemaphoreSlim> _keyQuerySignals = new();
     private readonly ConcurrentQueue<int> _registerFailures = new();
+    private readonly ConcurrentDictionary<int, int> _registerFailuresByCall = new();
+    private readonly ConcurrentDictionary<int, Exception> _registerExceptionsByCall = new();
     private readonly ConcurrentQueue<bool> _unregisterResults = new();
     private readonly ConcurrentQueue<bool> _postResults = new();
     private readonly ConcurrentQueue<Exception> _keyStateFailures = new();
@@ -33,6 +36,7 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
         new(new ConcurrentQueue<NativeResult>());
     private readonly ManualResetEventSlim _messageProcessingAllowed = new(true);
     private readonly SemaphoreSlim _postSignal = new(0);
+    private readonly List<PostCountWaiter> _postCountWaiters = new();
     private uint _nextThreadId = 100;
     private bool _disposed;
 
@@ -74,6 +78,7 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
     {
         PostCalls.Enqueue(new PostThreadMessageCall(threadId, message));
         _postSignal.Release();
+        CompletePostCountWaiters();
 
         bool succeeded = !_postResults.TryDequeue(out bool scriptedResult) ||
             scriptedResult;
@@ -100,6 +105,23 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
             registrationId,
             modifiers,
             virtualKey));
+
+        int callNumber = RegisterCalls.Count;
+
+        if (_registerExceptionsByCall.TryRemove(
+                callNumber,
+                out Exception? scriptedException))
+        {
+            throw scriptedException;
+        }
+
+        if (_registerFailuresByCall.TryRemove(
+                callNumber,
+                out int scriptedErrorCode))
+        {
+            Marshal.SetLastPInvokeError(scriptedErrorCode);
+            return false;
+        }
 
         if (_registerFailures.TryDequeue(out int nativeErrorCode))
         {
@@ -162,6 +184,17 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
         _registerFailures.Enqueue(nativeErrorCode);
     }
 
+    internal void FailRegisterCall(int callNumber, int nativeErrorCode = 0)
+    {
+        _registerFailuresByCall.TryAdd(callNumber, nativeErrorCode);
+    }
+
+    internal void ThrowOnRegisterCall(int callNumber, Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        _registerExceptionsByCall.TryAdd(callNumber, exception);
+    }
+
     internal void FailNextUnregister()
     {
         _unregisterResults.Enqueue(false);
@@ -205,6 +238,27 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
         return _postSignal.WaitAsync();
     }
 
+    internal Task WaitForPostCountAsync(int expectedCount)
+    {
+        if (expectedCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(expectedCount));
+        }
+
+        lock (_postCountGate)
+        {
+            if (PostCalls.Count >= expectedCount)
+            {
+                return Task.CompletedTask;
+            }
+
+            var completion = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _postCountWaiters.Add(new PostCountWaiter(expectedCount, completion));
+            return completion.Task;
+        }
+    }
+
     internal void PauseMessageProcessing()
     {
         _messageProcessingAllowed.Reset();
@@ -235,6 +289,39 @@ internal sealed class FakeGlobalHotkeyNativeApi : IGlobalHotkeyNativeApi, IDispo
     internal readonly record struct PostThreadMessageCall(
         uint ThreadId,
         uint Message);
+
+    private void CompletePostCountWaiters()
+    {
+        List<TaskCompletionSource>? completed = null;
+
+        lock (_postCountGate)
+        {
+            int count = PostCalls.Count;
+
+            for (int index = _postCountWaiters.Count - 1; index >= 0; index--)
+            {
+                PostCountWaiter waiter = _postCountWaiters[index];
+                if (count >= waiter.ExpectedCount)
+                {
+                    completed ??= new List<TaskCompletionSource>();
+                    completed.Add(waiter.Completion);
+                    _postCountWaiters.RemoveAt(index);
+                }
+            }
+        }
+
+        if (completed is not null)
+        {
+            foreach (TaskCompletionSource completion in completed)
+            {
+                completion.TrySetResult();
+            }
+        }
+    }
+
+    private sealed record PostCountWaiter(
+        int ExpectedCount,
+        TaskCompletionSource Completion);
 
     private readonly record struct NativeResult(
         int Result,

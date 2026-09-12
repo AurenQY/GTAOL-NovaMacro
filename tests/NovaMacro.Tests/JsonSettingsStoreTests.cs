@@ -135,7 +135,7 @@ public sealed class JsonSettingsStoreTests
     }
 
     [Fact]
-    public void Load_V2JsonRemainsInvalidUntilIntegration()
+    public void Load_V2JsonReturnsItsCompleteCanonicalCollection()
     {
         using var temporary = new TemporaryDirectory();
         JsonSettingsStore store = CreateStore(temporary);
@@ -146,12 +146,8 @@ public sealed class JsonSettingsStoreTests
 
         SettingsLoadResult result = store.Load();
 
-        Assert.Equal(SettingsLoadStatus.Invalid, result.Status);
-        SettingsJsonReadResult jsonResult = Assert.IsType<SettingsJsonReadResult>(
-            result.JsonReadResult);
-        SettingsJsonError error = Assert.Single(jsonResult.CodecErrors);
-        Assert.Equal(SettingsJsonErrorCode.UnknownProperty, error.Code);
-        Assert.Equal("macros", error.Path);
+        ApplicationSettings settings = AssertLoaded(result);
+        Assert.Empty(settings.Macros);
     }
 
     [Fact]
@@ -297,7 +293,7 @@ public sealed class JsonSettingsStoreTests
     }
 
     [Fact]
-    public void Save_V1CompatibleSettingsStillWritesV1CanonicalStructure()
+    public void Save_AlwaysWritesV2CanonicalStructure()
     {
         using var temporary = new TemporaryDirectory();
         JsonSettingsStore store = CreateStore(temporary);
@@ -306,9 +302,9 @@ public sealed class JsonSettingsStoreTests
 
         using JsonDocument document = JsonDocument.Parse(
             File.ReadAllText(store.SettingsPath, Utf8WithoutBom));
-        Assert.Equal(1, document.RootElement.GetProperty("version").GetInt32());
-        Assert.True(document.RootElement.TryGetProperty("macro", out _));
-        Assert.False(document.RootElement.TryGetProperty("macros", out _));
+        Assert.Equal(2, document.RootElement.GetProperty("version").GetInt32());
+        Assert.False(document.RootElement.TryGetProperty("macro", out _));
+        Assert.True(document.RootElement.TryGetProperty("macros", out _));
     }
 
     [Fact]
@@ -343,7 +339,7 @@ public sealed class JsonSettingsStoreTests
 
         Assert.NotEqual(firstBytes, secondBytes);
         Assert.Equal(
-            Utf8WithoutBom.GetBytes(SettingsJsonCodec.Write(second)),
+            Utf8WithoutBom.GetBytes(SettingsJsonCodec.WriteV2(second)),
             secondBytes);
         AssertSettingsEqual(second, AssertLoaded(store.Load()));
         Assert.Empty(OwnTemporaryFiles(Path.GetDirectoryName(store.SettingsPath)!));

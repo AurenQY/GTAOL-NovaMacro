@@ -340,9 +340,65 @@ public sealed class MacroEditorSaveCoordinatorTests
         Assert.Equal(2, store.SaveCallCount);
     }
 
+    [Fact]
+    public void Save_MultiDraftPreservesEveryMacroAndOrder()
+    {
+        var store = new RecordingSettingsStore();
+        var coordinator = new MacroEditorSaveCoordinator(store);
+        MultiMacroEditorDraft draft = MultiMacroEditorDraft.From(
+            new ApplicationSettings(new[]
+            {
+                CreateMacro("11111111-1111-1111-1111-111111111111", "A", true, HotkeyKey.F8),
+                CreateMacro("22222222-2222-2222-2222-222222222222", "B", false, HotkeyKey.F9),
+                CreateMacro("33333333-3333-3333-3333-333333333333", "C", true, HotkeyKey.F10)
+            }));
+
+        MacroEditorSaveResult result = coordinator.Save(draft);
+
+        Assert.Equal(MacroEditorSaveStatus.Saved, result.Status);
+        Assert.Equal(new[] { "A", "B", "C" },
+            Assert.Single(store.SavedSettings).Macros.Select(macro => macro.Name));
+        Assert.Equal(new[] { HotkeyKey.F8, HotkeyKey.F9, HotkeyKey.F10 },
+            store.SavedSettings[0].Macros.Select(macro => macro.Hotkey.Key));
+    }
+
+    [Fact]
+    public void Save_InvalidMultiDraftDoesNotCallStore()
+    {
+        var store = new RecordingSettingsStore();
+        var coordinator = new MacroEditorSaveCoordinator(store);
+        MultiMacroEditorDraft draft = MultiMacroEditorDraft.From(
+            new ApplicationSettings(new[]
+            {
+                CreateMacro("11111111-1111-1111-1111-111111111111", "A", true, HotkeyKey.F8),
+                CreateMacro("22222222-2222-2222-2222-222222222222", "B", true, HotkeyKey.F9)
+            }));
+        draft.Macros[1].HotkeyKey = HotkeyKey.F8;
+
+        MacroEditorSaveResult result = coordinator.Save(draft);
+
+        Assert.Equal(MacroEditorSaveStatus.Invalid, result.Status);
+        Assert.Equal(0, store.SaveCallCount);
+        Assert.Empty(store.SavedSettings);
+    }
+
     private static MacroEditorDraft CreateDraft()
     {
         return MacroEditorDraft.From(StarterConfiguration.Default);
+    }
+
+    private static MacroDefinition CreateMacro(
+        string id,
+        string name,
+        bool enabled,
+        HotkeyKey hotkey)
+    {
+        return new MacroDefinition(
+            new MacroId(new Guid(id)),
+            name,
+            enabled,
+            new KeyboardHotkey(hotkey),
+            new MacroSequence(new MacroStep[] { new KeyTapStep(KeyboardKey.A) }));
     }
 
     private static MacroEditorDraft CreateEditedDraft()

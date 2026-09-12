@@ -13,7 +13,7 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
         long.MaxValue / TimeSpan.TicksPerMillisecond;
 
     private readonly MacroId _macroId;
-    private readonly bool _enabled;
+    private bool _enabled;
     private string _name;
     private HotkeyKey _hotkeyKey;
     private bool _control;
@@ -21,7 +21,7 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
     private bool _shift;
     private readonly ObservableCollection<MacroStepEditorDraft> _steps;
 
-    private MacroEditorDraft(
+    internal MacroEditorDraft(
         MacroId macroId,
         bool enabled,
         string name,
@@ -70,6 +70,22 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
         }
     }
 
+    public bool Enabled
+    {
+        get => _enabled;
+        set
+        {
+            if (_enabled == value)
+            {
+                return;
+            }
+
+            _enabled = value;
+            OnPropertyChanged(nameof(Enabled));
+            OnChanged();
+        }
+    }
+
     public HotkeyKey HotkeyKey
     {
         get => _hotkeyKey;
@@ -82,6 +98,7 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
 
             _hotkeyKey = value;
             OnPropertyChanged(nameof(HotkeyKey));
+            OnPropertyChanged(nameof(HotkeyDisplay));
             OnChanged();
         }
     }
@@ -98,6 +115,7 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
 
             _control = value;
             OnPropertyChanged(nameof(Control));
+            OnPropertyChanged(nameof(HotkeyDisplay));
             OnChanged();
         }
     }
@@ -114,6 +132,7 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
 
             _alt = value;
             OnPropertyChanged(nameof(Alt));
+            OnPropertyChanged(nameof(HotkeyDisplay));
             OnChanged();
         }
     }
@@ -130,18 +149,52 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
 
             _shift = value;
             OnPropertyChanged(nameof(Shift));
+            OnPropertyChanged(nameof(HotkeyDisplay));
             OnChanged();
         }
     }
 
     public ReadOnlyObservableCollection<MacroStepEditorDraft> Steps { get; }
 
+    public string HotkeyDisplay
+    {
+        get
+        {
+            var parts = new List<string>();
+
+            if (Control)
+            {
+                parts.Add("Ctrl");
+            }
+
+            if (Alt)
+            {
+                parts.Add("Alt");
+            }
+
+            if (Shift)
+            {
+                parts.Add("Shift");
+            }
+
+            parts.Add(HotkeyKey.ToString());
+            return string.Join("+", parts);
+        }
+    }
+
+    internal MacroId Id => _macroId;
+
     internal static MacroEditorDraft From(ApplicationSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        MacroDefinition macro =
-            SingleMacroCompatibility.RequireEnabled(settings);
+        return From(SingleMacroCompatibility.RequireEnabled(settings));
+    }
+
+    internal static MacroEditorDraft From(MacroDefinition macro)
+    {
+        ArgumentNullException.ThrowIfNull(macro);
+
         var steps = new List<MacroStepEditorDraft>();
 
         foreach (MacroStep step in macro.Sequence.Steps)
@@ -227,6 +280,27 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
         out ApplicationSettingsCandidate? candidate,
         out IReadOnlyList<EditorParseError> parseErrors)
     {
+        if (!TryCreateMacroCandidate(
+                "macros[0]",
+                out MacroDefinitionCandidate? macro,
+                out parseErrors))
+        {
+            candidate = null;
+            return false;
+        }
+
+        candidate = new ApplicationSettingsCandidate(
+            new MacroDefinitionCandidate?[] { macro });
+        return true;
+    }
+
+    internal bool TryCreateMacroCandidate(
+        string macroPath,
+        out MacroDefinitionCandidate? candidate,
+        out IReadOnlyList<EditorParseError> parseErrors)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(macroPath);
+
         var errors = new List<EditorParseError>();
         var steps = new List<MacroStep>(Steps.Count);
 
@@ -243,7 +317,7 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
             if (!TryParseDelay(step.MillisecondsText, out TimeSpan duration))
             {
                 errors.Add(new EditorParseError(
-                    $"macros[0].steps[{index}].milliseconds",
+                    $"{macroPath}.steps[{index}].milliseconds",
                     $"Step {index + 1}: Delay must be a non-negative whole " +
                     "number of milliseconds."));
                 continue;
@@ -277,16 +351,12 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
             modifiers |= HotkeyModifiers.Shift;
         }
 
-        candidate = new ApplicationSettingsCandidate(
-            new MacroDefinitionCandidate?[]
-            {
-                new(
-                    _macroId,
-                    Name,
-                    _enabled,
-                    new KeyboardHotkey(HotkeyKey, modifiers),
-                    new MacroSequence(steps))
-            });
+        candidate = new MacroDefinitionCandidate(
+            _macroId,
+            Name,
+            _enabled,
+            new KeyboardHotkey(HotkeyKey, modifiers),
+            new MacroSequence(steps));
 
         return true;
     }

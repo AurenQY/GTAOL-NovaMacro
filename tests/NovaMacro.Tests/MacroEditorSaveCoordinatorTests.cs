@@ -33,7 +33,7 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
+        MultiMacroEditorDraft draft = CreateDraft();
 
         MacroEditorValidationResult validation = coordinator.Validate(draft);
         MacroEditorSaveResult result = coordinator.Save(draft);
@@ -56,8 +56,8 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
-        draft.Steps[1].MillisecondsText = "abc";
+        MultiMacroEditorDraft draft = CreateDraft();
+        AssertSelected(draft).Steps[1].MillisecondsText = "abc";
 
         MacroEditorSaveResult result = coordinator.Save(draft);
 
@@ -79,8 +79,8 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
-        draft.HotkeyKey = HotkeyKey.A;
+        MultiMacroEditorDraft draft = CreateDraft();
+        AssertSelected(draft).HotkeyKey = HotkeyKey.A;
 
         MacroEditorSaveResult result = coordinator.Save(draft);
 
@@ -106,12 +106,13 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
+        MultiMacroEditorDraft draft = CreateDraft();
+        MacroEditorDraft macro = AssertSelected(draft);
 
         MacroEditorSaveResult first = coordinator.Save(draft);
-        draft.Steps[1].MillisecondsText = "abc";
+        macro.Steps[1].MillisecondsText = "abc";
         MacroEditorSaveResult invalid = coordinator.Save(draft);
-        draft.Steps[1].MillisecondsText = "150";
+        macro.Steps[1].MillisecondsText = "150";
         MacroEditorSaveResult recovered = coordinator.Save(draft);
 
         Assert.Equal(MacroEditorSaveStatus.Saved, first.Status);
@@ -129,8 +130,9 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
-        draft.Name = "  My Macro  ";
+        MultiMacroEditorDraft draft = CreateDraft();
+        MacroEditorDraft macro = AssertSelected(draft);
+        macro.Name = "  My Macro  ";
 
         MacroEditorSaveResult result = coordinator.Save(draft);
 
@@ -138,7 +140,7 @@ public sealed class MacroEditorSaveCoordinatorTests
         Assert.Equal(
             "My Macro",
             Assert.Single(Assert.Single(store.SavedSettings).Macros).Name);
-        Assert.Equal("  My Macro  ", draft.Name);
+        Assert.Equal("  My Macro  ", macro.Name);
         Assert.Equal(1, store.SaveCallCount);
     }
 
@@ -147,11 +149,12 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
-        draft.Name = "Edited Legacy Macro";
-        draft.HotkeyKey = HotkeyKey.F9;
-        draft.Control = true;
-        draft.Steps[0].Key = KeyboardKey.M;
+        MultiMacroEditorDraft draft = CreateDraft();
+        MacroEditorDraft macro = AssertSelected(draft);
+        macro.Name = "Edited Legacy Macro";
+        macro.HotkeyKey = HotkeyKey.F9;
+        macro.Control = true;
+        macro.Steps[0].Key = KeyboardKey.M;
 
         MacroEditorSaveResult result = coordinator.Save(draft);
 
@@ -174,11 +177,12 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
-        draft.HotkeyKey = HotkeyKey.F9;
-        draft.Control = true;
-        draft.Alt = true;
-        draft.Shift = false;
+        MultiMacroEditorDraft draft = CreateDraft();
+        MacroEditorDraft macro = AssertSelected(draft);
+        macro.HotkeyKey = HotkeyKey.F9;
+        macro.Control = true;
+        macro.Alt = true;
+        macro.Shift = false;
 
         MacroEditorSaveResult result = coordinator.Save(draft);
 
@@ -196,12 +200,13 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
-        draft.Steps[0].Key = KeyboardKey.M;
-        draft.Steps[1].MillisecondsText = "250";
-        draft.Steps[2].Key = KeyboardKey.Enter;
-        draft.Steps[3].MillisecondsText = "10";
-        draft.Steps[4].Key = KeyboardKey.ArrowUp;
+        MultiMacroEditorDraft draft = CreateDraft();
+        MacroEditorDraft macro = AssertSelected(draft);
+        macro.Steps[0].Key = KeyboardKey.M;
+        macro.Steps[1].MillisecondsText = "250";
+        macro.Steps[2].Key = KeyboardKey.Enter;
+        macro.Steps[3].MillisecondsText = "10";
+        macro.Steps[4].Key = KeyboardKey.ArrowUp;
 
         MacroEditorSaveResult result = coordinator.Save(draft);
 
@@ -226,8 +231,9 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
-        draft.Steps[1].MillisecondsText = "00150";
+        MultiMacroEditorDraft draft = CreateDraft();
+        MacroEditorDraft macro = AssertSelected(draft);
+        macro.Steps[1].MillisecondsText = "00150";
 
         MacroEditorSaveResult result = coordinator.Save(draft);
 
@@ -236,7 +242,7 @@ public sealed class MacroEditorSaveCoordinatorTests
             Assert.Single(Assert.Single(store.SavedSettings).Macros)
                 .Sequence.Steps[1]);
         Assert.Equal(TimeSpan.FromMilliseconds(150), delay.Duration);
-        Assert.Equal("00150", draft.Steps[1].MillisecondsText);
+        Assert.Equal("00150", macro.Steps[1].MillisecondsText);
     }
 
     [Fact]
@@ -265,7 +271,7 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateEditedDraft();
+        MultiMacroEditorDraft draft = CreateEditedDraft();
         string before = Snapshot(draft);
 
         MacroEditorSaveResult result = coordinator.Save(draft);
@@ -285,7 +291,7 @@ public sealed class MacroEditorSaveCoordinatorTests
                 store.SettingsPath,
                 "Temporary write failed for the test."));
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateEditedDraft();
+        MultiMacroEditorDraft draft = CreateEditedDraft();
         string before = Snapshot(draft);
 
         MacroEditorSaveResult result = coordinator.Save(draft);
@@ -300,7 +306,7 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
+        MultiMacroEditorDraft draft = CreateDraft();
 
         MacroEditorSaveResult first = coordinator.Save(draft);
         MacroEditorSaveResult second = coordinator.Save(draft);
@@ -317,16 +323,17 @@ public sealed class MacroEditorSaveCoordinatorTests
     {
         var store = new RecordingSettingsStore();
         var coordinator = new MacroEditorSaveCoordinator(store);
-        MacroEditorDraft draft = CreateDraft();
+        MultiMacroEditorDraft draft = CreateDraft();
+        MacroEditorDraft macro = AssertSelected(draft);
 
         AssertValidValidation(coordinator.Validate(draft));
         Assert.Equal(MacroEditorSaveStatus.Saved, coordinator.Save(draft).Status);
 
-        draft.Steps[1].MillisecondsText = "abc";
+        macro.Steps[1].MillisecondsText = "abc";
         Assert.False(coordinator.Validate(draft).IsValid);
         Assert.Equal(MacroEditorSaveStatus.Invalid, coordinator.Save(draft).Status);
 
-        draft.Steps[1].MillisecondsText = "150";
+        macro.Steps[1].MillisecondsText = "150";
         store.SaveResult = SettingsSaveResult.Failure(
             new SettingsStorageError(
                 SettingsStorageErrorCode.PublishFailed,
@@ -382,9 +389,9 @@ public sealed class MacroEditorSaveCoordinatorTests
         Assert.Empty(store.SavedSettings);
     }
 
-    private static MacroEditorDraft CreateDraft()
+    private static MultiMacroEditorDraft CreateDraft()
     {
-        return MacroEditorDraft.From(StarterConfiguration.Default);
+        return MultiMacroEditorDraft.From(StarterConfiguration.Default);
     }
 
     private static MacroDefinition CreateMacro(
@@ -401,18 +408,19 @@ public sealed class MacroEditorSaveCoordinatorTests
             new MacroSequence(new MacroStep[] { new KeyTapStep(KeyboardKey.A) }));
     }
 
-    private static MacroEditorDraft CreateEditedDraft()
+    private static MultiMacroEditorDraft CreateEditedDraft()
     {
-        MacroEditorDraft draft = CreateDraft();
-        draft.Name = "  Edited Macro  ";
-        draft.HotkeyKey = HotkeyKey.F9;
-        draft.Control = true;
-        draft.Alt = true;
-        draft.Steps[0].Key = KeyboardKey.M;
-        draft.Steps[1].MillisecondsText = "00250";
-        draft.MoveUp(draft.Steps[2]);
-        draft.AddDelay();
-        draft.Steps[^1].MillisecondsText = "10";
+        MultiMacroEditorDraft draft = CreateDraft();
+        MacroEditorDraft macro = AssertSelected(draft);
+        macro.Name = "  Edited Macro  ";
+        macro.HotkeyKey = HotkeyKey.F9;
+        macro.Control = true;
+        macro.Alt = true;
+        macro.Steps[0].Key = KeyboardKey.M;
+        macro.Steps[1].MillisecondsText = "00250";
+        macro.MoveUp(macro.Steps[2]);
+        macro.AddDelay();
+        macro.Steps[^1].MillisecondsText = "10";
         return draft;
     }
 
@@ -426,17 +434,23 @@ public sealed class MacroEditorSaveCoordinatorTests
         Assert.Empty(validation.ErrorMessages);
     }
 
-    private static string Snapshot(MacroEditorDraft draft)
+    private static string Snapshot(MultiMacroEditorDraft draft)
     {
+        MacroEditorDraft macro = AssertSelected(draft);
         string steps = string.Join(
             ";",
-            draft.Steps.Select(step =>
+            macro.Steps.Select(step =>
                 $"{step.Position}:{step.Kind}:{step.Key}:" +
                 $"{step.MillisecondsText}:{step.CanMoveUp}:" +
                 $"{step.CanMoveDown}"));
 
-        return $"{draft.Name}|{draft.HotkeyKey}|{draft.Control}|" +
-            $"{draft.Alt}|{draft.Shift}|{steps}";
+        return $"{macro.Name}|{macro.HotkeyKey}|{macro.Control}|" +
+            $"{macro.Alt}|{macro.Shift}|{steps}";
+    }
+
+    private static MacroEditorDraft AssertSelected(MultiMacroEditorDraft draft)
+    {
+        return Assert.IsType<MacroEditorDraft>(draft.SelectedMacro);
     }
 
     private sealed class RecordingSettingsStore : ISettingsStore

@@ -184,13 +184,6 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
 
     internal MacroId Id => _macroId;
 
-    internal static MacroEditorDraft From(ApplicationSettings settings)
-    {
-        ArgumentNullException.ThrowIfNull(settings);
-
-        return From(SingleMacroCompatibility.RequireEnabled(settings));
-    }
-
     internal static MacroEditorDraft From(MacroDefinition macro)
     {
         ArgumentNullException.ThrowIfNull(macro);
@@ -276,24 +269,6 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
         OnChanged();
     }
 
-    internal bool TryCreateCandidate(
-        out ApplicationSettingsCandidate? candidate,
-        out IReadOnlyList<EditorParseError> parseErrors)
-    {
-        if (!TryCreateMacroCandidate(
-                "macros[0]",
-                out MacroDefinitionCandidate? macro,
-                out parseErrors))
-        {
-            candidate = null;
-            return false;
-        }
-
-        candidate = new ApplicationSettingsCandidate(
-            new MacroDefinitionCandidate?[] { macro });
-        return true;
-    }
-
     internal bool TryCreateMacroCandidate(
         string macroPath,
         out MacroDefinitionCandidate? candidate,
@@ -359,24 +334,6 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
             new MacroSequence(steps));
 
         return true;
-    }
-
-    internal MacroEditorValidationResult Validate()
-    {
-        if (!TryCreateCandidate(
-                out ApplicationSettingsCandidate? candidate,
-                out IReadOnlyList<EditorParseError> parseErrors))
-        {
-            return MacroEditorValidationResult.InvalidParse(parseErrors);
-        }
-
-        ConfigurationValidationResult configurationResult =
-            ConfigurationValidator.Validate(candidate!);
-
-        return configurationResult.IsValid
-            ? MacroEditorValidationResult.Valid(configurationResult.Settings!)
-            : MacroEditorValidationResult.InvalidConfiguration(
-                configurationResult.Errors);
     }
 
     private static bool TryParseDelay(string text, out TimeSpan duration)

@@ -35,7 +35,7 @@ public sealed class MacroEditorDraftTests
     public void MutatingDraft_DoesNotMutateStarterConfiguration()
     {
         ApplicationSettings starter = StarterConfiguration.Default;
-        MacroEditorDraft draft = MacroEditorDraft.From(starter);
+        MacroEditorDraft draft = MacroEditorDraft.From(AssertSingleMacro(starter));
 
         draft.Name = "Changed";
         draft.HotkeyKey = HotkeyKey.F9;
@@ -221,8 +221,9 @@ public sealed class MacroEditorDraftTests
         MacroEditorDraft draft = CreateDraft();
         draft.Steps[1].MillisecondsText = text;
 
-        bool created = draft.TryCreateCandidate(
-            out ApplicationSettingsCandidate? candidate,
+        bool created = draft.TryCreateMacroCandidate(
+            "macros[0]",
+            out MacroDefinitionCandidate? candidate,
             out IReadOnlyList<EditorParseError> errors);
 
         Assert.False(created);
@@ -262,8 +263,9 @@ public sealed class MacroEditorDraftTests
         draft.Steps[1].MillisecondsText = "abc";
         draft.Steps[3].MillisecondsText = "1.5";
 
-        bool created = draft.TryCreateCandidate(
-            out ApplicationSettingsCandidate? candidate,
+        bool created = draft.TryCreateMacroCandidate(
+            "macros[0]",
+            out MacroDefinitionCandidate? candidate,
             out IReadOnlyList<EditorParseError> errors);
 
         Assert.False(created);
@@ -286,7 +288,10 @@ public sealed class MacroEditorDraftTests
         MacroEditorDraft draft = CreateDraft();
         draft.Steps[1].MillisecondsText = "abc";
 
-        Assert.False(draft.TryCreateCandidate(out var invalidCandidate, out var errors));
+        Assert.False(draft.TryCreateMacroCandidate(
+            "macros[0]",
+            out MacroDefinitionCandidate? invalidCandidate,
+            out IReadOnlyList<EditorParseError> errors));
         Assert.Null(invalidCandidate);
         Assert.NotEmpty(errors);
 
@@ -560,19 +565,25 @@ public sealed class MacroEditorDraftTests
 
     private static MacroEditorDraft CreateDraft()
     {
-        return MacroEditorDraft.From(StarterConfiguration.Default);
+        return MacroEditorDraft.From(
+            AssertSingleMacro(StarterConfiguration.Default));
     }
 
     private static ApplicationSettingsCandidate AssertCandidate(
         MacroEditorDraft draft)
     {
-        bool created = draft.TryCreateCandidate(
-            out ApplicationSettingsCandidate? candidate,
+        bool created = draft.TryCreateMacroCandidate(
+            "macros[0]",
+            out MacroDefinitionCandidate? macro,
             out IReadOnlyList<EditorParseError> errors);
 
         Assert.True(created);
         Assert.Empty(errors);
-        return Assert.IsType<ApplicationSettingsCandidate>(candidate);
+        return new ApplicationSettingsCandidate(
+            new MacroDefinitionCandidate?[]
+            {
+                Assert.IsType<MacroDefinitionCandidate>(macro)
+            });
     }
 
     private static ApplicationSettings AssertValid(MacroEditorDraft draft)

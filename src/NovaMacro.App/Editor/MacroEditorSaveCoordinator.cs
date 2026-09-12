@@ -70,35 +70,10 @@ internal sealed class MacroEditorSaveCoordinator
 
     internal string SettingsPath => _settingsStore.SettingsPath;
 
-    internal MacroEditorValidationResult Validate(MacroEditorDraft draft)
-    {
-        ArgumentNullException.ThrowIfNull(draft);
-        return draft.Validate();
-    }
-
     internal MacroEditorValidationResult Validate(MultiMacroEditorDraft draft)
     {
         ArgumentNullException.ThrowIfNull(draft);
         return draft.Validate();
-    }
-
-    internal MacroEditorSaveResult Save(MacroEditorDraft draft)
-    {
-        MacroEditorValidationResult validation = Validate(draft);
-
-        if (!validation.IsValid)
-        {
-            return MacroEditorSaveResult.Invalid(validation);
-        }
-
-        SettingsSaveResult storageResult =
-            _settingsStore.Save(validation.Settings!);
-
-        return storageResult.IsSuccess
-            ? MacroEditorSaveResult.Saved(validation)
-            : MacroEditorSaveResult.StorageFailed(
-                validation,
-                storageResult.Error!);
     }
 
     internal MacroEditorSaveResult Save(MultiMacroEditorDraft draft)

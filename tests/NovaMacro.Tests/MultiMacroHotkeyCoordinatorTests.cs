@@ -263,8 +263,10 @@ public sealed class MultiMacroHotkeyCoordinatorTests
 
         await TriggerAsync(native, scheduler, registrationId: 1);
         await keyboard.WaitForCallCountAsync(2).WaitAsync(SafetyTimeout);
+        await coordinator.WaitForIdleForTestingAsync().WaitAsync(SafetyTimeout);
         await TriggerAsync(native, scheduler, registrationId: 3);
         await keyboard.WaitForCallCountAsync(4).WaitAsync(SafetyTimeout);
+        await coordinator.WaitForIdleForTestingAsync().WaitAsync(SafetyTimeout);
         await TriggerAsync(native, scheduler, registrationId: 2);
         await keyboard.WaitForCallCountAsync(6).WaitAsync(SafetyTimeout);
 
@@ -325,12 +327,13 @@ public sealed class MultiMacroHotkeyCoordinatorTests
             },
             keyboard.Snapshot());
 
-        await TriggerThroughQueuedContextAsync(native, scheduler, 2);
+        await TriggerExpectingNoCoordinatorWorkerAsync(native, scheduler, 2);
         Assert.Equal(2, keyboard.CallCount);
         Assert.Empty(executionFailures);
 
         delay.Release();
         await keyboard.WaitForCallCountAsync(4).WaitAsync(SafetyTimeout);
+        await coordinator.WaitForIdleForTestingAsync().WaitAsync(SafetyTimeout);
 
         await TriggerThroughQueuedContextAsync(native, scheduler, 2);
         await keyboard.WaitForCallCountAsync(6).WaitAsync(SafetyTimeout);
@@ -384,7 +387,7 @@ public sealed class MultiMacroHotkeyCoordinatorTests
             status => Assert.Equal(RuntimeMacroState.Active, status.State));
 
         await TriggerAsync(native, scheduler, registrationId: 2);
-        await keyboard.WaitForCallCountAsync(2).WaitAsync(SafetyTimeout);
+        await keyboard.WaitForCallCountAsync(3).WaitAsync(SafetyTimeout);
         Assert.Equal(
             new[]
             {
@@ -631,6 +634,31 @@ public sealed class MultiMacroHotkeyCoordinatorTests
 
         Assert.Equal(1, context.QueuedCount);
         context.RunAll();
+    }
+
+    private static async Task TriggerExpectingNoCoordinatorWorkerAsync(
+        FakeGlobalHotkeyNativeApi native,
+        FakeHotkeyTriggerWorkScheduler scheduler,
+        int registrationId)
+    {
+        native.EnqueueHotkey(registrationId);
+        await scheduler.WaitForQueuedCountAsync(1).WaitAsync(SafetyTimeout);
+        var context = new QueuedSynchronizationContext();
+        SynchronizationContext? previous = SynchronizationContext.Current;
+
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            Task worker = scheduler.RunNextAsync();
+            Assert.True(worker.IsCompleted);
+            await worker;
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        Assert.Equal(0, context.QueuedCount);
     }
 
     private static TaskCompletionSource<T> NewSignal<T>()

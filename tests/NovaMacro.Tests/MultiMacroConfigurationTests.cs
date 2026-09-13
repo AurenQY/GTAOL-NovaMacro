@@ -167,8 +167,8 @@ public sealed class MultiMacroConfigurationTests
             AssertInvalid(
                 result,
                 (
-                    ConfigurationValidationErrorCode.DuplicateEnabledHotkey,
-                    "macros[1].hotkey"));
+                    ConfigurationValidationErrorCode.DuplicateEnabledTrigger,
+                    "macros[1].trigger"));
         }
     }
 

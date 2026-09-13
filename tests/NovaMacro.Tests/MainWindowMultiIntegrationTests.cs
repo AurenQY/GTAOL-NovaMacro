@@ -50,14 +50,14 @@ public sealed class MainWindowMultiIntegrationTests
             ApplicationSettings saved = AssertLoaded(store.Load());
             MacroDefinition savedMacro = Assert.Single(saved.Macros);
             Assert.Equal("New Name", savedMacro.Name);
-            Assert.Equal(HotkeyKey.F9, savedMacro.Hotkey.Key);
+            Assert.Equal(HotkeyKey.F9, savedMacro.GetKeyboardHotkey().Key);
             Assert.Equal(new[] { 0x77u },
                 native.RegisterCalls.Select(call => call.VirtualKey));
             Assert.Empty(native.UnregisterCalls);
             Assert.Equal(1, factoryCalls);
             Assert.Equal("Old Name", Assert.Single(startup.RuntimeSettings!.Macros).Name);
             Assert.Equal(HotkeyKey.F8,
-                Assert.Single(startup.RuntimeSettings.Macros).Hotkey.Key);
+                Assert.Single(startup.RuntimeSettings.Macros).GetKeyboardHotkey().Key);
 
             window.PresentExecutionFailure(
                 Assert.Single(startup.RuntimeSettings.Macros).Id,

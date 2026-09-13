@@ -47,7 +47,7 @@ public sealed class MacroEditorSaveCoordinatorTests
         MacroDefinition savedMacro = Assert.Single(saved.Macros);
         Assert.Same(result.Validation.Settings, saved);
         Assert.Equal("ABC Test", savedMacro.Name);
-        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), savedMacro.Hotkey);
+        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), savedMacro.GetKeyboardHotkey());
         Assert.Equal(0, store.LoadCallCount);
     }
 
@@ -94,7 +94,7 @@ public sealed class MacroEditorSaveCoordinatorTests
         Assert.Equal(
             ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
             error.Code);
-        Assert.Equal("macros[0].hotkey", error.Path);
+        Assert.Equal("macros[0].trigger.hotkey", error.Path);
         Assert.False(string.IsNullOrWhiteSpace(error.Message));
         Assert.Empty(store.SavedSettings);
         Assert.Equal(0, store.SaveCallCount);
@@ -166,7 +166,7 @@ public sealed class MacroEditorSaveCoordinatorTests
         Assert.Equal("Edited Legacy Macro", savedMacro.Name);
         Assert.Equal(
             new KeyboardHotkey(HotkeyKey.F9, HotkeyModifiers.Control),
-            savedMacro.Hotkey);
+            savedMacro.GetKeyboardHotkey());
         Assert.Equal(
             new KeyTapStep(KeyboardKey.M),
             savedMacro.Sequence.Steps[0]);
@@ -191,7 +191,7 @@ public sealed class MacroEditorSaveCoordinatorTests
             new KeyboardHotkey(
                 HotkeyKey.F9,
                 HotkeyModifiers.Control | HotkeyModifiers.Alt),
-            Assert.Single(Assert.Single(store.SavedSettings).Macros).Hotkey);
+            Assert.Single(Assert.Single(store.SavedSettings).Macros).GetKeyboardHotkey());
         Assert.Equal(1, store.SaveCallCount);
     }
 
@@ -366,7 +366,7 @@ public sealed class MacroEditorSaveCoordinatorTests
         Assert.Equal(new[] { "A", "B", "C" },
             Assert.Single(store.SavedSettings).Macros.Select(macro => macro.Name));
         Assert.Equal(new[] { HotkeyKey.F8, HotkeyKey.F9, HotkeyKey.F10 },
-            store.SavedSettings[0].Macros.Select(macro => macro.Hotkey.Key));
+            store.SavedSettings[0].Macros.Select(macro => macro.GetKeyboardHotkey().Key));
     }
 
     [Fact]

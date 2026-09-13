@@ -80,12 +80,12 @@ public sealed class ConfigurationValidatorTests
         MacroDefinitionCandidate candidateMacro =
             Assert.Single(candidate.Macros!)!;
         Assert.Equal("Useful Macro", macro.Name);
-        Assert.Equal(hotkey, macro.Hotkey);
+        Assert.Equal(hotkey, macro.GetKeyboardHotkey());
         Assert.Equal(sequence.Steps, macro.Sequence.Steps);
         Assert.NotSame(macroCandidate, macro);
 
         Assert.Equal(rawName, candidateMacro.Name);
-        Assert.Same(hotkey, candidateMacro.Hotkey);
+        Assert.Same(hotkey, candidateMacro.GetKeyboardHotkey());
         Assert.Same(sequence, candidateMacro.Sequence);
     }
 
@@ -121,8 +121,8 @@ public sealed class ConfigurationValidatorTests
                             ValidSequence())
                     });
                 expected = (
-                    ConfigurationValidationErrorCode.HotkeyRequired,
-                    "macros[0].hotkey");
+                    ConfigurationValidationErrorCode.TriggerRequired,
+                    "macros[0].trigger");
                 break;
 
             case MissingDependency.Sequence:
@@ -218,7 +218,7 @@ public sealed class ConfigurationValidatorTests
                 "macros[0].name"),
             (
                 ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-                "macros[0].hotkey"),
+                "macros[0].trigger.hotkey"),
             (
                 ConfigurationValidationErrorCode.UnsupportedOutputKey,
                 "macros[0].steps[0].key"),
@@ -238,7 +238,7 @@ public sealed class ConfigurationValidatorTests
             CreateCandidate(hotkey: new KeyboardHotkey(key)),
             (
                 ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-                "macros[0].hotkey"));
+                "macros[0].trigger.hotkey"));
     }
 
     [Theory]

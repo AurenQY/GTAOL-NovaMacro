@@ -48,7 +48,7 @@ public sealed class MacroEditorDraftTests
 
         MacroDefinition starterMacro = AssertSingleMacro(starter);
         Assert.Equal("ABC Test", starterMacro.Name);
-        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), starterMacro.Hotkey);
+        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), starterMacro.GetKeyboardHotkey());
         Assert.Collection(
             starterMacro.Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.A), step),
@@ -75,7 +75,13 @@ public sealed class MacroEditorDraftTests
             HotkeyKey.Z,
             HotkeyKey.F1, HotkeyKey.F2, HotkeyKey.F3, HotkeyKey.F4,
             HotkeyKey.F5, HotkeyKey.F6, HotkeyKey.F7, HotkeyKey.F8,
-            HotkeyKey.F9, HotkeyKey.F10, HotkeyKey.F11
+            HotkeyKey.F9, HotkeyKey.F10, HotkeyKey.F11,
+            HotkeyKey.Numpad0, HotkeyKey.Numpad1, HotkeyKey.Numpad2,
+            HotkeyKey.Numpad3, HotkeyKey.Numpad4, HotkeyKey.Numpad5,
+            HotkeyKey.Numpad6, HotkeyKey.Numpad7, HotkeyKey.Numpad8,
+            HotkeyKey.Numpad9, HotkeyKey.NumpadAdd,
+            HotkeyKey.NumpadSubtract, HotkeyKey.NumpadMultiply,
+            HotkeyKey.NumpadDivide, HotkeyKey.NumpadDecimal
         };
         KeyboardKey[] expectedOutputs =
         {
@@ -93,12 +99,20 @@ public sealed class MacroEditorDraftTests
             KeyboardKey.ArrowUp, KeyboardKey.ArrowDown,
             KeyboardKey.ArrowLeft, KeyboardKey.ArrowRight,
             KeyboardKey.Enter, KeyboardKey.Escape, KeyboardKey.Space,
-            KeyboardKey.Tab, KeyboardKey.Backspace
+            KeyboardKey.Tab, KeyboardKey.Backspace,
+            KeyboardKey.Numpad0, KeyboardKey.Numpad1,
+            KeyboardKey.Numpad2, KeyboardKey.Numpad3,
+            KeyboardKey.Numpad4, KeyboardKey.Numpad5,
+            KeyboardKey.Numpad6, KeyboardKey.Numpad7,
+            KeyboardKey.Numpad8, KeyboardKey.Numpad9,
+            KeyboardKey.NumpadAdd, KeyboardKey.NumpadSubtract,
+            KeyboardKey.NumpadMultiply, KeyboardKey.NumpadDivide,
+            KeyboardKey.NumpadDecimal, KeyboardKey.NumpadEnter
         };
 
-        Assert.Equal(37, expectedHotkeys.Length);
+        Assert.Equal(52, expectedHotkeys.Length);
         Assert.Equal(expectedHotkeys, Enum.GetValues<HotkeyKey>());
-        Assert.Equal(45, expectedOutputs.Length);
+        Assert.Equal(61, expectedOutputs.Length);
         Assert.Equal(expectedOutputs, Enum.GetValues<KeyboardKey>());
     }
 
@@ -111,7 +125,7 @@ public sealed class MacroEditorDraftTests
         AssertInvalid(
             draft,
             ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-            "macros[0].hotkey");
+            "macros[0].trigger.hotkey");
     }
 
     [Theory]
@@ -138,7 +152,7 @@ public sealed class MacroEditorDraftTests
                 : HotkeyModifiers.Shift;
         Assert.Equal(
             new KeyboardHotkey(HotkeyKey.A, expected),
-            AssertSingleMacro(settings).Hotkey);
+            AssertSingleMacro(settings).GetKeyboardHotkey());
     }
 
     [Theory]
@@ -152,7 +166,7 @@ public sealed class MacroEditorDraftTests
 
         ApplicationSettings settings = AssertValid(draft);
 
-        Assert.Equal(new KeyboardHotkey(key), AssertSingleMacro(settings).Hotkey);
+        Assert.Equal(new KeyboardHotkey(key), AssertSingleMacro(settings).GetKeyboardHotkey());
     }
 
     [Fact]
@@ -308,7 +322,7 @@ public sealed class MacroEditorDraftTests
         AssertInvalid(
             draft,
             ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-            "macros[0].hotkey");
+            "macros[0].trigger.hotkey");
 
         draft.Control = true;
 

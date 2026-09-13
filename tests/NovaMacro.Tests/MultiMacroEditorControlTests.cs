@@ -157,11 +157,44 @@ public sealed class MultiMacroEditorControlTests
             Assert.Equal(Enum.GetValues<HotkeyKey>(), control.HotkeyKeys);
             Assert.Contains(HotkeyKey.A, control.HotkeyKeys);
             Assert.Contains(HotkeyKey.F11, control.HotkeyKeys);
+            Assert.Contains(HotkeyKey.Numpad0, control.HotkeyKeys);
+            Assert.Contains(HotkeyKey.NumpadDivide, control.HotkeyKeys);
+            Assert.DoesNotContain(
+                control.HotkeyKeys,
+                key => key.ToString() == "NumpadEnter");
             Assert.DoesNotContain((HotkeyKey)999, control.HotkeyKeys);
             Assert.Equal(Enum.GetValues<KeyboardKey>(), control.OutputKeys);
             Assert.Contains(KeyboardKey.ArrowUp, control.OutputKeys);
+            Assert.Contains(KeyboardKey.NumpadEnter, control.OutputKeys);
             Assert.DoesNotContain(control.OutputKeys,
                 key => IsFunctionKeyToken(key.ToString()));
+            Assert.Equal(
+                new[] { MacroTriggerEditorKind.Keyboard, MacroTriggerEditorKind.MouseButton },
+                control.TriggerKinds);
+            Assert.Equal(
+                new[] { MouseButton.XButton1, MouseButton.XButton2 },
+                control.MouseTriggerButtons);
+            Assert.Equal(Enum.GetValues<MacroExecutionMode>(), control.ExecutionModes);
+        });
+    }
+
+    [Fact]
+    public void SurfaceExposesTriggerExecutionAndLeftMouseTapControls()
+    {
+        RunInSta(() =>
+        {
+            var control = new MultiMacroEditorControl();
+            Arrange(control);
+
+            Assert.Contains(
+                FindVisualDescendants<TextBlock>(control),
+                text => Equals(text.Text, "Trigger"));
+            Assert.Contains(
+                FindVisualDescendants<TextBlock>(control),
+                text => Equals(text.Text, "Execution"));
+            Assert.Contains(
+                FindVisualDescendants<Button>(control),
+                button => Equals(button.Content, "+ Left Mouse Tap"));
         });
     }
 
@@ -343,6 +376,24 @@ public sealed class MultiMacroEditorControlTests
 
         throw new InvalidOperationException(
             $"Visual descendant '{typeof(T).Name}' was not found.");
+    }
+
+    private static IEnumerable<T> FindVisualDescendants<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (int index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is T found)
+            {
+                yield return found;
+            }
+
+            foreach (T descendant in FindVisualDescendants<T>(child))
+            {
+                yield return descendant;
+            }
+        }
     }
 
     private static void RunInSta(Action action)

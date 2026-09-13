@@ -19,7 +19,9 @@ public sealed class BuiltInPresetCatalogTests
         Assert.False(string.IsNullOrWhiteSpace(preset.Id));
         Assert.Equal("ABC Test", preset.Name);
         Assert.True(preset.Enabled);
-        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), preset.Hotkey);
+        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), preset.GetKeyboardHotkey());
+        Assert.IsType<KeyboardMacroTrigger>(preset.Trigger);
+        Assert.Equal(MacroExecutionMode.Once, preset.ExecutionMode);
         Assert.Equal(BuiltInMacroSequences.AbcTest.Steps, preset.Sequence.Steps);
     }
 
@@ -98,7 +100,7 @@ public sealed class BuiltInPresetCatalogTests
 
         Assert.Equal(preset.Name, starter.Name);
         Assert.Equal(preset.Enabled, starter.Enabled);
-        Assert.Equal(preset.Hotkey, starter.Hotkey);
+        Assert.Equal(preset.GetKeyboardHotkey(), starter.GetKeyboardHotkey());
         Assert.Equal(preset.Sequence.Steps, starter.Sequence.Steps);
         Assert.Equal(SingleMacroCompatibility.LegacyMacroId, starter.Id);
     }
@@ -118,7 +120,7 @@ public sealed class BuiltInPresetCatalogTests
         Assert.NotEqual(SingleMacroCompatibility.LegacyMacroId, first.Id);
         Assert.Equal(preset.Name, first.Name);
         Assert.Equal(preset.Enabled, first.Enabled);
-        Assert.Equal(preset.Hotkey.Key, first.HotkeyKey);
+        Assert.Equal(preset.GetKeyboardHotkey().Key, first.HotkeyKey);
         Assert.False(first.Control);
         Assert.False(first.Alt);
         Assert.False(first.Shift);
@@ -194,8 +196,8 @@ public sealed class BuiltInPresetCatalogTests
 
         ConfigurationValidationError error = Assert.Single(
             validation.ConfigurationErrors);
-        Assert.Equal(ConfigurationValidationErrorCode.DuplicateEnabledHotkey, error.Code);
-        Assert.Equal("macros[1].hotkey", error.Path);
+        Assert.Equal(ConfigurationValidationErrorCode.DuplicateEnabledTrigger, error.Code);
+        Assert.Equal("macros[1].trigger", error.Path);
         Assert.Equal(HotkeyKey.F8, first.HotkeyKey);
         Assert.Equal(HotkeyKey.F8, second.HotkeyKey);
         Assert.True(first.Enabled);
@@ -228,7 +230,7 @@ public sealed class BuiltInPresetCatalogTests
         Assert.Equal(copy.Id, macro.Id);
         Assert.Equal(preset.Name, macro.Name);
         Assert.Equal(preset.Enabled, macro.Enabled);
-        Assert.Equal(preset.Hotkey, macro.Hotkey);
+        Assert.Equal(preset.GetKeyboardHotkey(), macro.GetKeyboardHotkey());
         Assert.Equal(preset.Sequence.Steps, macro.Sequence.Steps);
         Assert.Equal(new[] { "id", "name", "enabled", "hotkey", "steps" },
             serialized.EnumerateObject().Select(property => property.Name));

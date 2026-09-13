@@ -42,7 +42,22 @@ public sealed class WindowsGlobalHotkeyNativeMappingTests
         { HotkeyKey.F8, 0x77 },
         { HotkeyKey.F9, 0x78 },
         { HotkeyKey.F10, 0x79 },
-        { HotkeyKey.F11, 0x7A }
+        { HotkeyKey.F11, 0x7A },
+        { HotkeyKey.Numpad0, 0x60 },
+        { HotkeyKey.Numpad1, 0x61 },
+        { HotkeyKey.Numpad2, 0x62 },
+        { HotkeyKey.Numpad3, 0x63 },
+        { HotkeyKey.Numpad4, 0x64 },
+        { HotkeyKey.Numpad5, 0x65 },
+        { HotkeyKey.Numpad6, 0x66 },
+        { HotkeyKey.Numpad7, 0x67 },
+        { HotkeyKey.Numpad8, 0x68 },
+        { HotkeyKey.Numpad9, 0x69 },
+        { HotkeyKey.NumpadMultiply, 0x6A },
+        { HotkeyKey.NumpadAdd, 0x6B },
+        { HotkeyKey.NumpadSubtract, 0x6D },
+        { HotkeyKey.NumpadDecimal, 0x6E },
+        { HotkeyKey.NumpadDivide, 0x6F }
     };
 
     public static TheoryData<HotkeyModifiers, uint> ModifierMappings => new()
@@ -92,5 +107,16 @@ public sealed class WindowsGlobalHotkeyNativeMappingTests
             Assert.Single(native.RegisterCalls);
         Assert.Equal(expectedNativeMask, call.Modifiers);
         Assert.NotEqual(0u, call.Modifiers & 0x4000u);
+    }
+
+    [Fact]
+    public void NumpadTriggerVocabularyUsesNumLockVirtualKeysAndOmitsDistinctEnter()
+    {
+        string[] names = Enum.GetNames<HotkeyKey>();
+
+        Assert.Contains("Numpad0", names);
+        Assert.Contains("NumpadDecimal", names);
+        Assert.Contains("NumpadDivide", names);
+        Assert.DoesNotContain("NumpadEnter", names);
     }
 }

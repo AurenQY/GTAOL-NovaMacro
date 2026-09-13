@@ -233,8 +233,8 @@ public sealed class SettingsJsonV2CodecTests
 
         AssertTransitionValidationFailure(
             json,
-            ConfigurationValidationErrorCode.DuplicateEnabledHotkey,
-            "macros[1].hotkey");
+            ConfigurationValidationErrorCode.DuplicateEnabledTrigger,
+            "macros[1].trigger");
     }
 
     [Fact]
@@ -252,7 +252,7 @@ public sealed class SettingsJsonV2CodecTests
             SettingsJsonCodec.ReadV1OrV2(json));
 
         Assert.Equal(new[] { true, false }, settings.Macros.Select(macro => macro.Enabled));
-        Assert.Equal(settings.Macros[0].Hotkey, settings.Macros[1].Hotkey);
+        Assert.Equal(settings.Macros[0].GetKeyboardHotkey(), settings.Macros[1].GetKeyboardHotkey());
     }
 
     [Fact]
@@ -273,7 +273,7 @@ public sealed class SettingsJsonV2CodecTests
         Assert.Equal("Migrated", macro.Name);
         Assert.Equal(
             new KeyboardHotkey(HotkeyKey.F9, HotkeyModifiers.Control),
-            macro.Hotkey);
+            macro.GetKeyboardHotkey());
         Assert.Equal(
             new MacroStep[] { new KeyTapStep(KeyboardKey.N) },
             macro.Sequence.Steps);
@@ -431,7 +431,7 @@ public sealed class SettingsJsonV2CodecTests
 
         Assert.Equal(2, settings.Macros.Count);
         Assert.All(settings.Macros, macro => Assert.False(macro.Enabled));
-        Assert.Equal(settings.Macros[0].Hotkey, settings.Macros[1].Hotkey);
+        Assert.Equal(settings.Macros[0].GetKeyboardHotkey(), settings.Macros[1].GetKeyboardHotkey());
         Assert.Equal(settings.Macros[0].Name, settings.Macros[1].Name);
     }
 
@@ -568,7 +568,7 @@ public sealed class SettingsJsonV2CodecTests
             Assert.Equal(expected[index].Id, actual[index].Id);
             Assert.Equal(expected[index].Name, actual[index].Name);
             Assert.Equal(expected[index].Enabled, actual[index].Enabled);
-            Assert.Equal(expected[index].Hotkey, actual[index].Hotkey);
+            Assert.Equal(expected[index].GetKeyboardHotkey(), actual[index].GetKeyboardHotkey());
             Assert.Equal(expected[index].Sequence.Steps, actual[index].Sequence.Steps);
         }
     }

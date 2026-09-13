@@ -75,7 +75,7 @@ public sealed class MultiIntegrationStartupTests
         Assert.Equal(MacroEditorSaveStatus.Saved, save.Save(draft).Status);
 
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
-        Assert.Equal(2, document.RootElement.GetProperty("version").GetInt32());
+        Assert.Equal(3, document.RootElement.GetProperty("version").GetInt32());
         Assert.True(document.RootElement.TryGetProperty("macros", out _));
     }
 
@@ -105,14 +105,20 @@ public sealed class MultiIntegrationStartupTests
             draft.Macros.Select(macro => macro.Enabled));
     }
 
-    [Fact]
-    public void EmptyV2Load_RemainsEmptyWithoutStarterInjection()
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void EmptyV2OrV3Load_RemainsEmptyWithoutStarterInjection(int version)
     {
         using var temporary = new TemporaryDirectory();
         string path = temporary.GetPath("data", "settings.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, SettingsJsonCodec.WriteV2(
-            new ApplicationSettings(Array.Empty<MacroDefinition>())));
+        var empty = new ApplicationSettings(Array.Empty<MacroDefinition>());
+        File.WriteAllText(
+            path,
+            version == 2
+                ? SettingsJsonCodec.WriteV2(empty)
+                : SettingsJsonCodec.WriteV3(empty));
 
         StartupConfigurationResult startup = new StartupConfigurationCoordinator(
             new JsonSettingsStore(path)).Resolve();
@@ -156,7 +162,7 @@ public sealed class MultiIntegrationStartupTests
         Assert.Equal(new[] { 0x77u },
             native.RegisterCalls.Select(call => call.VirtualKey));
         Assert.Equal(HotkeyKey.F8,
-            Assert.Single(startup.RuntimeSettings!.Macros).Hotkey.Key);
+            Assert.Single(startup.RuntimeSettings!.Macros).GetKeyboardHotkey().Key);
     }
 
     [Fact]
@@ -332,6 +338,24 @@ public sealed class MultiIntegrationStartupTests
             coordinator.StatusChanged -= terminalObserver;
             _ = CaptureException(coordinator.Dispose);
         }
+    }
+
+    [Fact]
+    public void RuntimeStatusSequencing_EarlyPartialSnapshotAlsoRequiresCatchUp()
+    {
+        var initial = new MultiMacroRuntimeStatus(
+            MultiMacroRuntimeState.Active,
+            Array.Empty<RuntimeMacroStatus>());
+        var partial = new MultiMacroRuntimeStatus(
+            MultiMacroRuntimeState.PartiallyActive,
+            Array.Empty<RuntimeMacroStatus>());
+
+        Assert.False(NovaMacro.App.App.ShouldPresentCurrentStatusAsUpdate(
+            initial,
+            initial));
+        Assert.True(NovaMacro.App.App.ShouldPresentCurrentStatusAsUpdate(
+            initial,
+            partial));
     }
 
     private static ApplicationSettings Settings(params MacroDefinition[] macros)

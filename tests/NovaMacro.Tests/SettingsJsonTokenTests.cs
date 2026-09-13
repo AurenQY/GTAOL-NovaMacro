@@ -197,7 +197,7 @@ public sealed class SettingsJsonTokenTests
             SettingsJsonCodec.Read(json));
         MacroDefinition macro =
             SettingsJsonTestSupport.AssertSingleMacro(settings);
-        Assert.Equal(expectedKey, macro.Hotkey.Key);
+        Assert.Equal(expectedKey, macro.GetKeyboardHotkey().Key);
 
         using JsonDocument written = JsonDocument.Parse(
             SettingsJsonCodec.Write(settings));
@@ -287,7 +287,7 @@ public sealed class SettingsJsonTokenTests
             SettingsJsonCodec.Read(json));
         MacroDefinition macro =
             SettingsJsonTestSupport.AssertSingleMacro(settings);
-        Assert.Equal(expected, macro.Hotkey.Modifiers);
+        Assert.Equal(expected, macro.GetKeyboardHotkey().Modifiers);
     }
 
     [Theory]

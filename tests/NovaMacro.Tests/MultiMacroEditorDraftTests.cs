@@ -135,8 +135,8 @@ public sealed class MultiMacroEditorDraftTests
         {
             ConfigurationValidationError error = Assert.Single(
                 result.ConfigurationErrors);
-            Assert.Equal(ConfigurationValidationErrorCode.DuplicateEnabledHotkey, error.Code);
-            Assert.Equal("macros[1].hotkey", error.Path);
+            Assert.Equal(ConfigurationValidationErrorCode.DuplicateEnabledTrigger, error.Code);
+            Assert.Equal("macros[1].trigger", error.Path);
         }
     }
 
@@ -355,8 +355,8 @@ public sealed class MultiMacroEditorDraftTests
             rebuilt.Macros.Select(macro => macro.Name));
         Assert.Equal(original.Macros.Select(macro => macro.Enabled),
             rebuilt.Macros.Select(macro => macro.Enabled));
-        Assert.Equal(original.Macros.Select(macro => macro.Hotkey),
-            rebuilt.Macros.Select(macro => macro.Hotkey));
+        Assert.Equal(original.Macros.Select(macro => macro.GetKeyboardHotkey()),
+            rebuilt.Macros.Select(macro => macro.GetKeyboardHotkey()));
 
         for (int index = 0; index < original.Macros.Count; index++)
         {

@@ -293,7 +293,7 @@ public sealed class JsonSettingsStoreTests
     }
 
     [Fact]
-    public void Save_AlwaysWritesV2CanonicalStructure()
+    public void Save_AlwaysWritesV3CanonicalStructure()
     {
         using var temporary = new TemporaryDirectory();
         JsonSettingsStore store = CreateStore(temporary);
@@ -302,7 +302,7 @@ public sealed class JsonSettingsStoreTests
 
         using JsonDocument document = JsonDocument.Parse(
             File.ReadAllText(store.SettingsPath, Utf8WithoutBom));
-        Assert.Equal(2, document.RootElement.GetProperty("version").GetInt32());
+        Assert.Equal(3, document.RootElement.GetProperty("version").GetInt32());
         Assert.False(document.RootElement.TryGetProperty("macro", out _));
         Assert.True(document.RootElement.TryGetProperty("macros", out _));
     }
@@ -339,7 +339,7 @@ public sealed class JsonSettingsStoreTests
 
         Assert.NotEqual(firstBytes, secondBytes);
         Assert.Equal(
-            Utf8WithoutBom.GetBytes(SettingsJsonCodec.WriteV2(second)),
+            Utf8WithoutBom.GetBytes(SettingsJsonCodec.WriteV3(second)),
             secondBytes);
         AssertSettingsEqual(second, AssertLoaded(store.Load()));
         Assert.Empty(OwnTemporaryFiles(Path.GetDirectoryName(store.SettingsPath)!));
@@ -620,7 +620,7 @@ public sealed class JsonSettingsStoreTests
         Assert.Equal(expectedMacro.Id, actualMacro.Id);
         Assert.Equal(expectedMacro.Enabled, actualMacro.Enabled);
         Assert.Equal(expectedMacro.Name, actualMacro.Name);
-        Assert.Equal(expectedMacro.Hotkey, actualMacro.Hotkey);
+        Assert.Equal(expectedMacro.GetKeyboardHotkey(), actualMacro.GetKeyboardHotkey());
         Assert.Equal(
             expectedMacro.Sequence.Steps,
             actualMacro.Sequence.Steps);

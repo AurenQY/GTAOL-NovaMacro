@@ -17,7 +17,7 @@ public sealed class StarterConfigurationTests
         Assert.Equal("ABC Test", macro.Name);
         Assert.Equal(
             new KeyboardHotkey(HotkeyKey.F8),
-            macro.Hotkey);
+            macro.GetKeyboardHotkey());
         Assert.Collection(
             macro.Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.A), step),
@@ -39,7 +39,7 @@ public sealed class StarterConfigurationTests
                             macro.Id,
                             macro.Name,
                             macro.Enabled,
-                            macro.Hotkey,
+                            macro.GetKeyboardHotkey(),
                             macro.Sequence)
                     }));
 

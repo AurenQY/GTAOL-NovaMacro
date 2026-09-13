@@ -432,7 +432,7 @@ public sealed class SettingsJsonCodecTests
         Assert.Equal("Example", macro.Name);
         Assert.Equal(
             new KeyboardHotkey(HotkeyKey.F8, HotkeyModifiers.Control),
-            macro.Hotkey);
+            macro.GetKeyboardHotkey());
         Assert.Collection(
             macro.Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.M), step),
@@ -469,7 +469,7 @@ public sealed class SettingsJsonCodecTests
         Assert.True(originalMacro.Enabled);
         Assert.True(restoredMacro.Enabled);
         Assert.Equal(originalMacro.Name, restoredMacro.Name);
-        Assert.Equal(originalMacro.Hotkey, restoredMacro.Hotkey);
+        Assert.Equal(originalMacro.GetKeyboardHotkey(), restoredMacro.GetKeyboardHotkey());
         Assert.Equal(
             originalMacro.Sequence.Steps,
             restoredMacro.Sequence.Steps);
@@ -669,7 +669,7 @@ public sealed class SettingsJsonCodecTests
                         hotkeyJson: SettingsJsonTestSupport.HotkeyJson(
                             keyJson: "\"A\""))),
                 ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-                "macros[0].hotkey"),
+                "macros[0].trigger.hotkey"),
             (
                 SettingsJsonTestSupport.DocumentJson(
                     macroJson: SettingsJsonTestSupport.MacroJson(
@@ -832,7 +832,7 @@ public sealed class SettingsJsonCodecTests
             enabled.Id,
             enabled.Name,
             false,
-            enabled.Hotkey,
+            enabled.GetKeyboardHotkey(),
             enabled.Sequence);
         var settings = new ApplicationSettings(new[] { disabled });
 
@@ -859,7 +859,7 @@ public sealed class SettingsJsonCodecTests
                     nonLegacyId,
                     legacyMacro.Name,
                     true,
-                    legacyMacro.Hotkey,
+                    legacyMacro.GetKeyboardHotkey(),
                     legacyMacro.Sequence)
             });
 

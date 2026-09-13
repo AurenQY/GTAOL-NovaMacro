@@ -55,7 +55,23 @@ public sealed class WindowsKeyboardOutputTests
         { KeyboardKey.Escape, 0x1B, false },
         { KeyboardKey.Space, 0x20, false },
         { KeyboardKey.Tab, 0x09, false },
-        { KeyboardKey.Backspace, 0x08, false }
+        { KeyboardKey.Backspace, 0x08, false },
+        { KeyboardKey.Numpad0, 0x60, false },
+        { KeyboardKey.Numpad1, 0x61, false },
+        { KeyboardKey.Numpad2, 0x62, false },
+        { KeyboardKey.Numpad3, 0x63, false },
+        { KeyboardKey.Numpad4, 0x64, false },
+        { KeyboardKey.Numpad5, 0x65, false },
+        { KeyboardKey.Numpad6, 0x66, false },
+        { KeyboardKey.Numpad7, 0x67, false },
+        { KeyboardKey.Numpad8, 0x68, false },
+        { KeyboardKey.Numpad9, 0x69, false },
+        { KeyboardKey.NumpadMultiply, 0x6A, false },
+        { KeyboardKey.NumpadAdd, 0x6B, false },
+        { KeyboardKey.NumpadSubtract, 0x6D, false },
+        { KeyboardKey.NumpadDecimal, 0x6E, false },
+        { KeyboardKey.NumpadDivide, 0x6F, true },
+        { KeyboardKey.NumpadEnter, 0x0D, true }
     };
 
     [Theory]
@@ -87,20 +103,22 @@ public sealed class WindowsKeyboardOutputTests
     }
 
     [Fact]
-    public void ExtendedKeyFlag_IsUsedOnlyForFourArrowKeys()
+    public void ExtendedKeyFlag_IsUsedOnlyForApprovedExtendedKeys()
     {
-        KeyboardKey[] arrows =
+        KeyboardKey[] extendedKeys =
         {
             KeyboardKey.ArrowUp,
             KeyboardKey.ArrowDown,
             KeyboardKey.ArrowLeft,
-            KeyboardKey.ArrowRight
+            KeyboardKey.ArrowRight,
+            KeyboardKey.NumpadDivide,
+            KeyboardKey.NumpadEnter
         };
 
         foreach (object[] row in SupportedKeys)
         {
             var key = (KeyboardKey)row[0];
-            bool shouldBeExtended = arrows.Contains(key);
+            bool shouldBeExtended = extendedKeys.Contains(key);
             var native = new FakeKeyboardInputNativeApi();
             var keyboard = new WindowsKeyboardOutput(native);
 

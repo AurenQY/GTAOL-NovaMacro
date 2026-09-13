@@ -86,7 +86,7 @@ public sealed class FinalProductPresetIntegrationTests
         Assert.Equal(new[] { migrated.Name, "ABC Test" },
             reloaded.Macros.Select(macro => macro.Name));
         Assert.Equal(new[] { HotkeyKey.F8, HotkeyKey.F9 },
-            reloaded.Macros.Select(macro => macro.Hotkey.Key));
+            reloaded.Macros.Select(macro => macro.GetKeyboardHotkey().Key));
         Assert.Equal(BuiltInMacroSequences.AbcTest.Steps,
             reloaded.Macros[1].Sequence.Steps);
         Assert.DoesNotContain("preset", v2, StringComparison.OrdinalIgnoreCase);
@@ -177,7 +177,7 @@ public sealed class FinalProductPresetIntegrationTests
         ApplicationSettings saved = AssertLoaded(store.Load());
         Assert.Equal(2, saved.Macros.Count);
         Assert.Equal(new[] { HotkeyKey.F8, HotkeyKey.F9 },
-            saved.Macros.Select(macro => macro.Hotkey.Key));
+            saved.Macros.Select(macro => macro.GetKeyboardHotkey().Key));
         Assert.Equal(BuiltInMacroSequences.AbcTest.Steps,
             saved.Macros[1].Sequence.Steps);
     }
@@ -210,7 +210,7 @@ public sealed class FinalProductPresetIntegrationTests
         Assert.Equal(KeyboardKey.A, first.Steps.Single().Key);
         Assert.Equal(KeyboardKey.B, second.Steps.Single().Key);
         Assert.Contains(conflicting.ConfigurationErrors,
-            error => error.Code == ConfigurationValidationErrorCode.DuplicateEnabledHotkey);
+            error => error.Code == ConfigurationValidationErrorCode.DuplicateEnabledTrigger);
 
         second.Enabled = false;
 

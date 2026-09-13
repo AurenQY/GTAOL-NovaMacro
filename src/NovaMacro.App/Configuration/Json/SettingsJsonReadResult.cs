@@ -19,7 +19,11 @@ internal enum SettingsJsonErrorCode
     DuplicateModifier,
     UnknownStepType,
     UnknownOutputKey,
-    DelayMillisecondsOutOfRange
+    DelayMillisecondsOutOfRange,
+    UnknownTriggerKind,
+    UnknownMouseButton,
+    UnknownExecutionMode,
+    UnknownOutputMouseButton
 }
 
 internal sealed record SettingsJsonError(

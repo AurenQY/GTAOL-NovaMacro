@@ -1,5 +1,6 @@
 using NovaMacro.Core;
 using NovaMacro.Windows;
+using NovaMacro.App.Configuration;
 
 namespace NovaMacro.App.Presets;
 
@@ -9,19 +10,37 @@ internal sealed class BuiltInPresetDefinition
         string id,
         string name,
         bool enabled,
-        KeyboardHotkey hotkey,
+        MacroTrigger trigger,
+        MacroExecutionMode executionMode,
         MacroSequence sequence)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentNullException.ThrowIfNull(hotkey);
+        ArgumentNullException.ThrowIfNull(trigger);
         ArgumentNullException.ThrowIfNull(sequence);
 
         Id = id;
         Name = name;
         Enabled = enabled;
-        Hotkey = hotkey;
+        Trigger = trigger;
+        ExecutionMode = executionMode;
         Sequence = sequence;
+    }
+
+    internal BuiltInPresetDefinition(
+        string id,
+        string name,
+        bool enabled,
+        KeyboardHotkey hotkey,
+        MacroSequence sequence)
+        : this(
+            id,
+            name,
+            enabled,
+            new KeyboardMacroTrigger(hotkey),
+            MacroExecutionMode.Once,
+            sequence)
+    {
     }
 
     internal string Id { get; }
@@ -30,7 +49,9 @@ internal sealed class BuiltInPresetDefinition
 
     internal bool Enabled { get; }
 
-    internal KeyboardHotkey Hotkey { get; }
+    internal MacroTrigger Trigger { get; }
+
+    internal MacroExecutionMode ExecutionMode { get; }
 
     internal MacroSequence Sequence { get; }
 
@@ -50,7 +71,9 @@ internal static class BuiltInPresetCatalog
                 AbcTestPresetId,
                 "ABC Test",
                 enabled: true,
-                new KeyboardHotkey(HotkeyKey.F8),
+                new KeyboardMacroTrigger(
+                    new KeyboardHotkey(HotkeyKey.F8)),
+                MacroExecutionMode.Once,
                 BuiltInMacroSequences.AbcTest));
 
     internal static IReadOnlyList<BuiltInPresetDefinition> All => AllPresets;

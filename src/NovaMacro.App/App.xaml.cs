@@ -69,12 +69,15 @@ public partial class App : Application
         MainWindow mainWindow)
     {
         var keyboardOutput = new WindowsKeyboardOutput();
+        var mouseOutput = new WindowsMouseOutput();
         var delay = new TaskDelay();
-        var macroRunner = new MacroRunner(keyboardOutput, delay);
+        var macroRunner = new MacroRunner(keyboardOutput, mouseOutput, delay);
         var coordinator = new MultiMacroHotkeyCoordinator(
             runtimeSettings,
             () => new WindowsGlobalHotkeyService(),
-            macroRunner);
+            macroRunner,
+            mouseButtonServiceFactory:
+                () => new WindowsGlobalMouseButtonService());
 
         _runtimeSettings = runtimeSettings;
         coordinator.ExecutionFailed += OnRuntimeExecutionFailed;
@@ -156,8 +159,8 @@ public partial class App : Application
     {
         ArgumentNullException.ThrowIfNull(initialStatus);
 
-        return initialStatus.State != MultiMacroRuntimeState.ServiceUnavailable &&
-            currentStatus?.State == MultiMacroRuntimeState.ServiceUnavailable;
+        return currentStatus is not null &&
+            !ReferenceEquals(initialStatus, currentStatus);
     }
 
     internal static MultiMacroRuntimeStatus StartAndPresentInitialRuntimeStatus(

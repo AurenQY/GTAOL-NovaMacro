@@ -44,7 +44,22 @@ internal static class HotkeyKeyTokenMapper
             ["F8"] = HotkeyKey.F8,
             ["F9"] = HotkeyKey.F9,
             ["F10"] = HotkeyKey.F10,
-            ["F11"] = HotkeyKey.F11
+            ["F11"] = HotkeyKey.F11,
+            ["Numpad0"] = HotkeyKey.Numpad0,
+            ["Numpad1"] = HotkeyKey.Numpad1,
+            ["Numpad2"] = HotkeyKey.Numpad2,
+            ["Numpad3"] = HotkeyKey.Numpad3,
+            ["Numpad4"] = HotkeyKey.Numpad4,
+            ["Numpad5"] = HotkeyKey.Numpad5,
+            ["Numpad6"] = HotkeyKey.Numpad6,
+            ["Numpad7"] = HotkeyKey.Numpad7,
+            ["Numpad8"] = HotkeyKey.Numpad8,
+            ["Numpad9"] = HotkeyKey.Numpad9,
+            ["NumpadAdd"] = HotkeyKey.NumpadAdd,
+            ["NumpadSubtract"] = HotkeyKey.NumpadSubtract,
+            ["NumpadMultiply"] = HotkeyKey.NumpadMultiply,
+            ["NumpadDivide"] = HotkeyKey.NumpadDivide,
+            ["NumpadDecimal"] = HotkeyKey.NumpadDecimal
         };
 
     private static readonly IReadOnlyDictionary<HotkeyKey, string> ToToken =
@@ -110,7 +125,23 @@ internal static class KeyboardKeyTokenMapper
             ["Escape"] = KeyboardKey.Escape,
             ["Space"] = KeyboardKey.Space,
             ["Tab"] = KeyboardKey.Tab,
-            ["Backspace"] = KeyboardKey.Backspace
+            ["Backspace"] = KeyboardKey.Backspace,
+            ["Numpad0"] = KeyboardKey.Numpad0,
+            ["Numpad1"] = KeyboardKey.Numpad1,
+            ["Numpad2"] = KeyboardKey.Numpad2,
+            ["Numpad3"] = KeyboardKey.Numpad3,
+            ["Numpad4"] = KeyboardKey.Numpad4,
+            ["Numpad5"] = KeyboardKey.Numpad5,
+            ["Numpad6"] = KeyboardKey.Numpad6,
+            ["Numpad7"] = KeyboardKey.Numpad7,
+            ["Numpad8"] = KeyboardKey.Numpad8,
+            ["Numpad9"] = KeyboardKey.Numpad9,
+            ["NumpadAdd"] = KeyboardKey.NumpadAdd,
+            ["NumpadSubtract"] = KeyboardKey.NumpadSubtract,
+            ["NumpadMultiply"] = KeyboardKey.NumpadMultiply,
+            ["NumpadDivide"] = KeyboardKey.NumpadDivide,
+            ["NumpadDecimal"] = KeyboardKey.NumpadDecimal,
+            ["NumpadEnter"] = KeyboardKey.NumpadEnter
         };
 
     private static readonly IReadOnlyDictionary<KeyboardKey, string> ToToken =

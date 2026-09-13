@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using NovaMacro.App.Configuration;
 using NovaMacro.App.Presets;
 using NovaMacro.Core;
 using NovaMacro.Windows;
@@ -24,6 +25,14 @@ public partial class MultiMacroEditorControl : UserControl
         Presets = BuiltInPresetCatalog.All;
         HotkeyKeys = Array.AsReadOnly(Enum.GetValues<HotkeyKey>());
         OutputKeys = Array.AsReadOnly(Enum.GetValues<KeyboardKey>());
+        TriggerKinds = Array.AsReadOnly(Enum.GetValues<MacroTriggerEditorKind>());
+        MouseTriggerButtons = Array.AsReadOnly(new[]
+        {
+            MouseButton.XButton1,
+            MouseButton.XButton2
+        });
+        ExecutionModes = Array.AsReadOnly(
+            Enum.GetValues<MacroExecutionMode>());
 
         InitializeComponent();
 
@@ -38,6 +47,12 @@ public partial class MultiMacroEditorControl : UserControl
     public IReadOnlyList<HotkeyKey> HotkeyKeys { get; }
 
     public IReadOnlyList<KeyboardKey> OutputKeys { get; }
+
+    public IReadOnlyList<MacroTriggerEditorKind> TriggerKinds { get; }
+
+    public IReadOnlyList<MouseButton> MouseTriggerButtons { get; }
+
+    public IReadOnlyList<MacroExecutionMode> ExecutionModes { get; }
 
     internal IReadOnlyList<BuiltInPresetDefinition> Presets { get; }
 
@@ -67,6 +82,11 @@ public partial class MultiMacroEditorControl : UserControl
     private void AddDelay_Click(object sender, RoutedEventArgs e)
     {
         _draft.SelectedMacro?.AddDelay();
+    }
+
+    private void AddMouseTap_Click(object sender, RoutedEventArgs e)
+    {
+        _draft.SelectedMacro?.AddMouseButtonTap();
     }
 
     private void RemoveStep_Click(object sender, RoutedEventArgs e)

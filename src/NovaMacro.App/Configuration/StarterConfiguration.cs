@@ -16,7 +16,9 @@ internal static class StarterConfiguration
                     SingleMacroCompatibility.LegacyMacroId,
                     "ABC Test",
                     true,
-                    new KeyboardHotkey(HotkeyKey.F8),
+                    new KeyboardMacroTrigger(
+                        new KeyboardHotkey(HotkeyKey.F8)),
+                    MacroExecutionMode.Once,
                     BuiltInMacroSequences.AbcTest)
             });
 

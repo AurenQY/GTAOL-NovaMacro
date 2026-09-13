@@ -3,15 +3,26 @@ namespace NovaMacro.Core;
 public sealed class MacroRunner
 {
     private readonly IKeyboardOutput _keyboardOutput;
+    private readonly IMouseOutput _mouseOutput;
     private readonly IDelay _delay;
     private int _isRunning;
 
     public MacroRunner(IKeyboardOutput keyboardOutput, IDelay delay)
+        : this(keyboardOutput, UnsupportedMouseOutput.Instance, delay)
+    {
+    }
+
+    public MacroRunner(
+        IKeyboardOutput keyboardOutput,
+        IMouseOutput mouseOutput,
+        IDelay delay)
     {
         ArgumentNullException.ThrowIfNull(keyboardOutput);
+        ArgumentNullException.ThrowIfNull(mouseOutput);
         ArgumentNullException.ThrowIfNull(delay);
 
         _keyboardOutput = keyboardOutput;
+        _mouseOutput = mouseOutput;
         _delay = delay;
     }
 
@@ -38,6 +49,10 @@ public sealed class MacroRunner
                 {
                     case KeyTapStep keyTap:
                         TapKey(keyTap.Key);
+                        break;
+
+                    case MouseButtonTapStep mouseTap:
+                        TapMouseButton(mouseTap.Button);
                         break;
 
                     case DelayStep delay:
@@ -75,6 +90,41 @@ public sealed class MacroRunner
             {
                 _keyboardOutput.KeyUp(key);
             }
+        }
+    }
+
+    private void TapMouseButton(MouseButton button)
+    {
+        bool mouseDownSucceeded = false;
+
+        try
+        {
+            _mouseOutput.ButtonDown(button);
+            mouseDownSucceeded = true;
+        }
+        finally
+        {
+            if (mouseDownSucceeded)
+            {
+                _mouseOutput.ButtonUp(button);
+            }
+        }
+    }
+
+    private sealed class UnsupportedMouseOutput : IMouseOutput
+    {
+        internal static UnsupportedMouseOutput Instance { get; } = new();
+
+        public void ButtonDown(MouseButton button)
+        {
+            throw new NotSupportedException(
+                "This MacroRunner was not configured with mouse output.");
+        }
+
+        public void ButtonUp(MouseButton button)
+        {
+            throw new NotSupportedException(
+                "This MacroRunner was not configured with mouse output.");
         }
     }
 }

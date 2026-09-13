@@ -8,11 +8,16 @@ internal enum ConfigurationValidationErrorCode
     MacroIdRequired,
     MacroIdEmpty,
     DuplicateMacroId,
-    DuplicateEnabledHotkey,
+    DuplicateEnabledTrigger,
     MacroNameRequired,
     MacroNameTooLong,
     MacroNameContainsControlCharacter,
-    HotkeyRequired,
+    TriggerRequired,
+    UnsupportedTrigger,
+    UnsupportedMouseTriggerButton,
+    UnsupportedExecutionMode,
+    KeyboardRepeatWhileHeldNotAllowed,
+    EmptyRepeatingSequenceNotAllowed,
     ModifierlessLetterHotkeyNotAllowed,
     MacroSequenceRequired,
     MacroStepCountOutOfRange,
@@ -20,7 +25,8 @@ internal enum ConfigurationValidationErrorCode
     DelayOutOfRange,
     TotalDelayTooLong,
     UnsupportedMacroStep,
-    UnsupportedOutputKey
+    UnsupportedOutputKey,
+    UnsupportedOutputMouseButton
 }
 
 internal sealed record ConfigurationValidationError(

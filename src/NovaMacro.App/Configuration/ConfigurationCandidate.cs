@@ -10,5 +10,23 @@ internal sealed record MacroDefinitionCandidate(
     MacroId? Id,
     string? Name,
     bool Enabled,
-    KeyboardHotkey? Hotkey,
-    MacroSequence? Sequence);
+    MacroTrigger? Trigger,
+    MacroExecutionMode ExecutionMode,
+    MacroSequence? Sequence)
+{
+    internal MacroDefinitionCandidate(
+        MacroId? id,
+        string? name,
+        bool enabled,
+        KeyboardHotkey? hotkey,
+        MacroSequence? sequence)
+        : this(
+            id,
+            name,
+            enabled,
+            hotkey is null ? null : new KeyboardMacroTrigger(hotkey),
+            MacroExecutionMode.Once,
+            sequence)
+    {
+    }
+}

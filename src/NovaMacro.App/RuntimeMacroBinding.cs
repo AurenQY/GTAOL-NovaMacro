@@ -6,5 +6,6 @@ namespace NovaMacro.App;
 
 internal sealed record RuntimeMacroBinding(
     MacroId Id,
-    KeyboardHotkey Hotkey,
+    MacroTrigger Trigger,
+    MacroExecutionMode ExecutionMode,
     MacroSequence Sequence);

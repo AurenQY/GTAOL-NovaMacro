@@ -1,4 +1,5 @@
 using NovaMacro.App.Configuration;
+using NovaMacro.Core;
 using NovaMacro.Windows;
 
 namespace NovaMacro.App.Startup;
@@ -55,7 +56,7 @@ internal sealed class RuntimeStatusPresentation
             }
 
             diagnostics.Add(
-                $"{macro.Name} ({FormatHotkey(macro.Hotkey)}): " +
+                $"{macro.Name} ({FormatTrigger(macro.Trigger)}): " +
                 (macroStatus.Diagnostic ?? "Registration failed."));
         }
 
@@ -111,8 +112,22 @@ internal sealed class RuntimeStatusPresentation
 
         return macro is null
             ? $"A running macro failed: {exception.Message}"
-            : $"{macro.Name} ({FormatHotkey(macro.Hotkey)}) failed: " +
+            : $"{macro.Name} ({FormatTrigger(macro.Trigger)}) failed: " +
                 exception.Message;
+    }
+
+    internal static string FormatTrigger(MacroTrigger trigger)
+    {
+        ArgumentNullException.ThrowIfNull(trigger);
+
+        return trigger switch
+        {
+            KeyboardMacroTrigger keyboard => FormatHotkey(keyboard.Hotkey),
+            MouseButtonMacroTrigger { Button: MouseButton.XButton1 } => "Mouse4",
+            MouseButtonMacroTrigger { Button: MouseButton.XButton2 } => "Mouse5",
+            MouseButtonMacroTrigger mouse => mouse.Button.ToString(),
+            _ => trigger.GetType().Name
+        };
     }
 
     internal static string FormatHotkey(KeyboardHotkey hotkey)

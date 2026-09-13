@@ -46,7 +46,7 @@ internal static class ConfigurationValidator
 
         var normalizedNames = new string[macros.Count];
         var seenIds = new HashSet<MacroId>();
-        var enabledHotkeys = new HashSet<KeyboardHotkey>();
+        var enabledTriggers = new HashSet<MacroTrigger>();
 
         for (int index = 0; index < macros.Count; index++)
         {
@@ -65,14 +65,23 @@ internal static class ConfigurationValidator
             ValidateId(macro.Id, macroPath, seenIds, errors);
             normalizedNames[index] =
                 ValidateName(macro.Name, macroPath, errors);
-            ValidateHotkey(macro.Hotkey, macroPath, errors);
-            ValidateEnabledHotkeyUniqueness(
-                macro.Enabled,
-                macro.Hotkey,
+            ValidateTrigger(macro.Trigger, macroPath, errors);
+            ValidateExecutionMode(
+                macro.Trigger,
+                macro.ExecutionMode,
                 macroPath,
-                enabledHotkeys,
                 errors);
-            ValidateSequence(macro.Sequence, macroPath, errors);
+            ValidateEnabledTriggerUniqueness(
+                macro.Enabled,
+                macro.Trigger,
+                macroPath,
+                enabledTriggers,
+                errors);
+            ValidateSequence(
+                macro.Sequence,
+                macro.ExecutionMode,
+                macroPath,
+                errors);
         }
 
         if (errors.Count != 0)
@@ -89,7 +98,8 @@ internal static class ConfigurationValidator
                 macro.Id!.Value,
                 normalizedNames[index],
                 macro.Enabled,
-                macro.Hotkey!,
+                macro.Trigger!,
+                macro.ExecutionMode,
                 macro.Sequence!));
         }
 
@@ -164,53 +174,104 @@ internal static class ConfigurationValidator
         return normalizedName;
     }
 
-    private static void ValidateHotkey(
-        KeyboardHotkey? hotkey,
+    private static void ValidateTrigger(
+        MacroTrigger? trigger,
         string macroPath,
         ICollection<ConfigurationValidationError> errors)
     {
-        if (hotkey is null)
+        if (trigger is null)
         {
             errors.Add(new ConfigurationValidationError(
-                ConfigurationValidationErrorCode.HotkeyRequired,
-                $"{macroPath}.hotkey",
-                "A macro hotkey is required."));
+                ConfigurationValidationErrorCode.TriggerRequired,
+                $"{macroPath}.trigger",
+                "A macro trigger is required."));
             return;
         }
 
-        if (hotkey.Modifiers == HotkeyModifiers.None &&
-            IsLetterHotkey(hotkey.Key))
+        switch (trigger)
         {
-            errors.Add(new ConfigurationValidationError(
-                ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
-                $"{macroPath}.hotkey",
-                "A letter hotkey must include Ctrl, Alt, or Shift."));
+            case KeyboardMacroTrigger keyboard
+                when keyboard.Hotkey.Modifiers == HotkeyModifiers.None &&
+                    IsLetterHotkey(keyboard.Hotkey.Key):
+                errors.Add(new ConfigurationValidationError(
+                    ConfigurationValidationErrorCode.ModifierlessLetterHotkeyNotAllowed,
+                    $"{macroPath}.trigger.hotkey",
+                    "A letter hotkey must include Ctrl, Alt, or Shift."));
+                break;
+
+            case KeyboardMacroTrigger:
+                break;
+
+            case MouseButtonMacroTrigger mouse
+                when mouse.Button is not MouseButton.XButton1 and
+                    not MouseButton.XButton2:
+                errors.Add(new ConfigurationValidationError(
+                    ConfigurationValidationErrorCode.UnsupportedMouseTriggerButton,
+                    $"{macroPath}.trigger.button",
+                    "Only Mouse4 and Mouse5 can be macro triggers."));
+                break;
+
+            case MouseButtonMacroTrigger:
+                break;
+
+            default:
+                errors.Add(new ConfigurationValidationError(
+                    ConfigurationValidationErrorCode.UnsupportedTrigger,
+                    $"{macroPath}.trigger",
+                    $"Macro trigger type '{trigger.GetType().Name}' is not supported."));
+                break;
         }
     }
 
-    private static void ValidateEnabledHotkeyUniqueness(
-        bool enabled,
-        KeyboardHotkey? hotkey,
+    private static void ValidateExecutionMode(
+        MacroTrigger? trigger,
+        MacroExecutionMode executionMode,
         string macroPath,
-        ISet<KeyboardHotkey> enabledHotkeys,
         ICollection<ConfigurationValidationError> errors)
     {
-        if (!enabled || hotkey is null)
+        if (!Enum.IsDefined(executionMode))
+        {
+            errors.Add(new ConfigurationValidationError(
+                ConfigurationValidationErrorCode.UnsupportedExecutionMode,
+                $"{macroPath}.executionMode",
+                $"Execution mode value '{(int)executionMode}' is not supported."));
+            return;
+        }
+
+        if (executionMode == MacroExecutionMode.RepeatWhileHeld &&
+            trigger is KeyboardMacroTrigger)
+        {
+            errors.Add(new ConfigurationValidationError(
+                ConfigurationValidationErrorCode.KeyboardRepeatWhileHeldNotAllowed,
+                $"{macroPath}.executionMode",
+                "Repeat while held is supported only for Mouse4 or Mouse5 triggers."));
+        }
+    }
+
+    private static void ValidateEnabledTriggerUniqueness(
+        bool enabled,
+        MacroTrigger? trigger,
+        string macroPath,
+        ISet<MacroTrigger> enabledTriggers,
+        ICollection<ConfigurationValidationError> errors)
+    {
+        if (!enabled || trigger is null)
         {
             return;
         }
 
-        if (!enabledHotkeys.Add(hotkey))
+        if (!enabledTriggers.Add(trigger))
         {
             errors.Add(new ConfigurationValidationError(
-                ConfigurationValidationErrorCode.DuplicateEnabledHotkey,
-                $"{macroPath}.hotkey",
-                "Enabled macros must use unique hotkeys."));
+                ConfigurationValidationErrorCode.DuplicateEnabledTrigger,
+                $"{macroPath}.trigger",
+                "Enabled macros must use unique triggers."));
         }
     }
 
     private static void ValidateSequence(
         MacroSequence? sequence,
+        MacroExecutionMode executionMode,
         string macroPath,
         ICollection<ConfigurationValidationError> errors)
     {
@@ -224,6 +285,14 @@ internal static class ConfigurationValidator
         }
 
         IReadOnlyList<MacroStep> steps = sequence.Steps;
+        if (executionMode == MacroExecutionMode.RepeatWhileHeld &&
+            steps.Count == 0)
+        {
+            errors.Add(new ConfigurationValidationError(
+                ConfigurationValidationErrorCode.EmptyRepeatingSequenceNotAllowed,
+                $"{macroPath}.steps",
+                "A repeat-while-held macro cannot have an empty sequence."));
+        }
         if (steps.Count < MinimumMacroStepCount ||
             steps.Count > MaximumMacroStepCount)
         {
@@ -234,7 +303,7 @@ internal static class ConfigurationValidator
                 $"{MaximumMacroStepCount} steps."));
         }
 
-        bool containsKeyTap = false;
+        bool containsInputTap = false;
         long totalDelayTicks = 0;
         bool totalDelayExceeded = false;
 
@@ -246,8 +315,13 @@ internal static class ConfigurationValidator
             switch (step)
             {
                 case KeyTapStep keyTap:
-                    containsKeyTap = true;
+                    containsInputTap = true;
                     ValidateOutputKey(keyTap, stepPath, errors);
+                    break;
+
+                case MouseButtonTapStep mouseTap:
+                    containsInputTap = true;
+                    ValidateOutputMouseButton(mouseTap, stepPath, errors);
                     break;
 
                 case DelayStep delay:
@@ -267,12 +341,12 @@ internal static class ConfigurationValidator
             }
         }
 
-        if (!containsKeyTap)
+        if (!containsInputTap)
         {
             errors.Add(new ConfigurationValidationError(
                 ConfigurationValidationErrorCode.MacroMustContainKeyTap,
                 $"{macroPath}.steps",
-                "A macro must contain at least one key tap step."));
+                "A macro must contain at least one keyboard or mouse tap step."));
         }
 
         if (totalDelayExceeded ||
@@ -282,6 +356,20 @@ internal static class ConfigurationValidator
                 ConfigurationValidationErrorCode.TotalDelayTooLong,
                 $"{macroPath}.steps",
                 "Total macro delay must not exceed 300,000 milliseconds."));
+        }
+    }
+
+    private static void ValidateOutputMouseButton(
+        MouseButtonTapStep mouseTap,
+        string stepPath,
+        ICollection<ConfigurationValidationError> errors)
+    {
+        if (mouseTap.Button != MouseButton.Left)
+        {
+            errors.Add(new ConfigurationValidationError(
+                ConfigurationValidationErrorCode.UnsupportedOutputMouseButton,
+                $"{stepPath}.button",
+                $"Output mouse button '{mouseTap.Button}' is not supported."));
         }
     }
 

@@ -38,5 +38,23 @@ public enum HotkeyKey
     F8,
     F9,
     F10,
-    F11
+    F11,
+    // These map directly to VK_NUMPAD/VK operator values and therefore use
+    // normal NumLock-enabled numpad behavior. NumpadEnter is intentionally not
+    // exposed because RegisterHotKey cannot distinguish it from main Enter.
+    Numpad0,
+    Numpad1,
+    Numpad2,
+    Numpad3,
+    Numpad4,
+    Numpad5,
+    Numpad6,
+    Numpad7,
+    Numpad8,
+    Numpad9,
+    NumpadAdd,
+    NumpadSubtract,
+    NumpadMultiply,
+    NumpadDivide,
+    NumpadDecimal
 }

@@ -5,8 +5,17 @@ namespace NovaMacro.Windows;
 internal static class NativeMethods
 {
     internal const uint InputKeyboard = 1;
+    internal const uint InputMouse = 0;
     internal const uint KeyEventExtendedKey = 0x0001;
     internal const uint KeyEventKeyUp = 0x0002;
+    internal const uint MouseEventLeftDown = 0x0002;
+    internal const uint MouseEventLeftUp = 0x0004;
+
+    internal const int WhMouseLowLevel = 14;
+    internal const uint WmXButtonDown = 0x020B;
+    internal const uint WmXButtonUp = 0x020C;
+    internal const ushort XButton1 = 0x0001;
+    internal const ushort XButton2 = 0x0002;
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern uint SendInput(
@@ -55,6 +64,32 @@ internal static class NativeMethods
 
     [DllImport("kernel32.dll")]
     internal static extern uint GetCurrentThreadId();
+
+    [DllImport("kernel32.dll", EntryPoint = "GetModuleHandleW", SetLastError = true)]
+    internal static extern nint GetModuleHandle(string? moduleName);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint SetWindowsHookEx(
+        int hookId,
+        LowLevelMouseHookProcedure hookProcedure,
+        nint moduleHandle,
+        uint threadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnhookWindowsHookEx(nint hookHandle);
+
+    [DllImport("user32.dll")]
+    internal static extern nint CallNextHookEx(
+        nint hookHandle,
+        int code,
+        nuint wParam,
+        nint lParam);
+
+    internal delegate nint LowLevelMouseHookProcedure(
+        int code,
+        nuint wParam,
+        nint lParam);
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Input
@@ -122,5 +157,15 @@ internal static class NativeMethods
     {
         internal int X;
         internal int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LowLevelMouseHookData
+    {
+        internal Point Point;
+        internal uint MouseData;
+        internal uint Flags;
+        internal uint Time;
+        internal nuint ExtraInfo;
     }
 }

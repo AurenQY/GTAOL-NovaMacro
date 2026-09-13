@@ -7,8 +7,8 @@ using NovaMacro.Windows;
 
 namespace NovaMacro.App.Editor;
 
-// Dormant collection editor state. It deliberately has no storage or runtime
-// dependency; MULTI-INTEGRATION-01 will decide when to connect it.
+// Editable collection state stays independent of storage and runtime services;
+// the App composition layer decides when to load, save, or activate it.
 internal sealed class MultiMacroEditorDraft : INotifyPropertyChanged
 {
     private readonly ObservableCollection<MacroEditorDraft> _macros;
@@ -100,7 +100,8 @@ internal sealed class MultiMacroEditorDraft : INotifyPropertyChanged
             CreateOrdinaryMacroId(),
             preset.Name,
             preset.Enabled,
-            preset.Hotkey,
+            preset.Trigger,
+            preset.ExecutionMode,
             preset.Sequence);
 
         return Add(MacroEditorDraft.From(copy));

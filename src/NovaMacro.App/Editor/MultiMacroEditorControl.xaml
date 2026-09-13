@@ -30,7 +30,7 @@
                             <DataTemplate>
                                 <StackPanel Margin="4">
                                     <TextBlock FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Foreground="DimGray" Text="{Binding HotkeyDisplay}" />
+                                    <TextBlock Foreground="DimGray" Text="{Binding TriggerDisplay}" />
                                     <TextBlock Foreground="DimGray" Text="{Binding Enabled, StringFormat=Enabled: {0}}" />
                                 </StackPanel>
                             </DataTemplate>
@@ -102,6 +102,7 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
@@ -115,15 +116,22 @@
                                 <TextBlock Grid.Row="1" Margin="0,14,0,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="Enabled" />
                                 <CheckBox Grid.Row="1" Grid.Column="1" Margin="0,14,0,0" VerticalAlignment="Center" Content="Register this macro when integrated" IsChecked="{Binding Enabled, Mode=TwoWay}" />
 
-                                <TextBlock Grid.Row="2" Margin="0,14,0,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="Hotkey" />
+                                <TextBlock Grid.Row="2" Margin="0,14,0,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="Trigger" />
                                 <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,14,0,0" Orientation="Horizontal">
-                                    <ComboBox Width="110" Padding="5,3" ItemsSource="{Binding HotkeyKeys, RelativeSource={RelativeSource AncestorType={x:Type local:MultiMacroEditorControl}}}" SelectedItem="{Binding HotkeyKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <CheckBox Margin="14,0,0,0" VerticalAlignment="Center" Content="Ctrl" IsChecked="{Binding Control, Mode=TwoWay}" />
-                                    <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Alt" IsChecked="{Binding Alt, Mode=TwoWay}" />
-                                    <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Shift" IsChecked="{Binding Shift, Mode=TwoWay}" />
+                                    <ComboBox Width="112" Padding="5,3" ItemsSource="{Binding TriggerKinds, RelativeSource={RelativeSource AncestorType={x:Type local:MultiMacroEditorControl}}}" SelectedItem="{Binding TriggerKind, Mode=TwoWay}" />
+                                    <StackPanel Margin="10,0,0,0" Orientation="Horizontal" Visibility="{Binding IsKeyboardTrigger, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ComboBox Width="124" Padding="5,3" ItemsSource="{Binding HotkeyKeys, RelativeSource={RelativeSource AncestorType={x:Type local:MultiMacroEditorControl}}}" SelectedItem="{Binding HotkeyKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <CheckBox Margin="14,0,0,0" VerticalAlignment="Center" Content="Ctrl" IsChecked="{Binding Control, Mode=TwoWay}" />
+                                        <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Alt" IsChecked="{Binding Alt, Mode=TwoWay}" />
+                                        <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Shift" IsChecked="{Binding Shift, Mode=TwoWay}" />
+                                    </StackPanel>
+                                    <ComboBox Width="124" Margin="10,0,0,0" Padding="5,3" ItemsSource="{Binding MouseTriggerButtons, RelativeSource={RelativeSource AncestorType={x:Type local:MultiMacroEditorControl}}}" SelectedItem="{Binding MouseButton, Mode=TwoWay}" Visibility="{Binding IsMouseTrigger, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 </StackPanel>
 
-                                <Grid Grid.Row="3" Grid.ColumnSpan="2" Margin="0,18,0,0">
+                                <TextBlock Grid.Row="3" Margin="0,14,0,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="Execution" />
+                                <ComboBox Grid.Row="3" Grid.Column="1" Width="180" Margin="0,14,0,0" HorizontalAlignment="Left" Padding="5,3" ItemsSource="{Binding ExecutionModes, RelativeSource={RelativeSource AncestorType={x:Type local:MultiMacroEditorControl}}}" SelectedItem="{Binding ExecutionMode, Mode=TwoWay}" />
+
+                                <Grid Grid.Row="4" Grid.ColumnSpan="2" Margin="0,18,0,0">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="*" />
@@ -148,6 +156,7 @@
                                                             <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TypeLabel}" />
                                                             <Grid Grid.Column="2">
                                                                 <ComboBox MinWidth="120" HorizontalAlignment="Left" Padding="5,3" ItemsSource="{Binding OutputKeys, RelativeSource={RelativeSource AncestorType={x:Type local:MultiMacroEditorControl}}}" SelectedItem="{Binding Key, Mode=TwoWay}" Visibility="{Binding IsKeyTap, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                                <TextBlock VerticalAlignment="Center" Text="Left" Visibility="{Binding IsMouseButtonTap, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                                 <StackPanel Orientation="Horizontal" Visibility="{Binding IsDelay, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                                     <TextBox Width="110" Padding="5,3" Text="{Binding MillisecondsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                                     <TextBlock Margin="6,0,0,0" VerticalAlignment="Center" Foreground="DimGray" Text="ms" />
@@ -164,6 +173,7 @@
                                     </Border>
                                     <StackPanel Grid.Row="2" Orientation="Horizontal">
                                         <Button MinWidth="92" Padding="8,5" Click="AddKeyTap_Click" Content="+ Key Tap" />
+                                        <Button MinWidth="118" Margin="8,0,0,0" Padding="8,5" Click="AddMouseTap_Click" Content="+ Left Mouse Tap" />
                                         <Button MinWidth="82" Margin="8,0,0,0" Padding="8,5" Click="AddDelay_Click" Content="+ Delay" />
                                     </StackPanel>
                                 </Grid>

@@ -10,6 +10,7 @@ internal static class SettingsJsonCodec
 {
     private const int V1Version = 1;
     private const int V2Version = 2;
+    private const int V3Version = 3;
     private const int MaximumJsonDepth = 32;
     private const long MaximumTimeSpanMilliseconds =
         long.MaxValue / TimeSpan.TicksPerMillisecond;
@@ -53,6 +54,39 @@ internal static class SettingsJsonCodec
             "modifiers"
         };
 
+    private static readonly IReadOnlySet<string> V3TopLevelProperties =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "version",
+            "macros"
+        };
+
+    private static readonly IReadOnlySet<string> V3MacroProperties =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "id",
+            "name",
+            "enabled",
+            "trigger",
+            "executionMode",
+            "steps"
+        };
+
+    private static readonly IReadOnlySet<string> KeyboardTriggerProperties =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "kind",
+            "key",
+            "modifiers"
+        };
+
+    private static readonly IReadOnlySet<string> MouseTriggerProperties =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "kind",
+            "button"
+        };
+
     private static readonly IReadOnlySet<string> KeyTapProperties =
         new HashSet<string>(StringComparer.Ordinal)
         {
@@ -67,11 +101,22 @@ internal static class SettingsJsonCodec
             "milliseconds"
         };
 
-    // Dormant transition API. Production store/startup remain V1-only until
-    // MULTI-INTEGRATION-01 explicitly switches to this reader.
+    private static readonly IReadOnlySet<string> MouseButtonTapProperties =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "type",
+            "button"
+        };
+
+    // Legacy-version entry point retained for focused V1/V2 compatibility tests.
     internal static SettingsJsonReadResult ReadV1OrV2(string json)
     {
         return ReadCore(json, TryParseV1OrV2Candidate);
+    }
+
+    internal static SettingsJsonReadResult ReadV1OrV2OrV3(string json)
+    {
+        return ReadCore(json, TryParseSupportedCandidate);
     }
 
     internal static SettingsJsonReadResult Read(string json)
@@ -103,6 +148,34 @@ internal static class SettingsJsonCodec
                 WriteV2Macro(writer, macro);
             }
 
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    internal static string WriteV3(ApplicationSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(
+            buffer,
+            new JsonWriterOptions
+            {
+                Indented = true,
+                SkipValidation = false
+            }))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("version", V3Version);
+            writer.WritePropertyName("macros");
+            writer.WriteStartArray();
+            foreach (MacroDefinition macro in settings.Macros)
+            {
+                WriteV3Macro(writer, macro);
+            }
             writer.WriteEndArray();
             writer.WriteEndObject();
         }
@@ -302,6 +375,54 @@ internal static class SettingsJsonCodec
         return false;
     }
 
+    private static bool TryParseSupportedCandidate(
+        JsonElement root,
+        out ApplicationSettingsCandidate? candidate,
+        out SettingsJsonError? error)
+    {
+        candidate = null;
+
+        if (!TryCollectObjectProperties(
+                root,
+                string.Empty,
+                out Dictionary<string, JsonElement> properties,
+                out error) ||
+            !TryGetRequiredProperty(
+                properties,
+                "version",
+                string.Empty,
+                out JsonElement versionElement,
+                out error) ||
+            !TryReadInt64(versionElement, "version", out long version, out error))
+        {
+            return false;
+        }
+
+        return version switch
+        {
+            V1Version => TryParseV1Candidate(root, out candidate, out error),
+            V2Version => TryParseV2Candidate(
+                root, properties, out candidate, out error),
+            V3Version => TryParseV3Candidate(
+                root, properties, out candidate, out error),
+            _ => UnsupportedVersion(
+                version, out candidate, out error)
+        };
+    }
+
+    private static bool UnsupportedVersion(
+        long version,
+        out ApplicationSettingsCandidate? candidate,
+        out SettingsJsonError? error)
+    {
+        candidate = null;
+        error = new SettingsJsonError(
+            SettingsJsonErrorCode.UnsupportedVersion,
+            "version",
+            $"Settings version '{version}' is not supported.");
+        return false;
+    }
+
     private static bool TryParseV2Candidate(
         JsonElement root,
         IReadOnlyDictionary<string, JsonElement> properties,
@@ -356,6 +477,58 @@ internal static class SettingsJsonCodec
         return true;
     }
 
+    private static bool TryParseV3Candidate(
+        JsonElement root,
+        IReadOnlyDictionary<string, JsonElement> properties,
+        out ApplicationSettingsCandidate? candidate,
+        out SettingsJsonError? error)
+    {
+        candidate = null;
+
+        if (!TryRejectUnknownProperties(
+                root,
+                string.Empty,
+                V3TopLevelProperties,
+                out error) ||
+            !TryGetRequiredProperty(
+                properties,
+                "macros",
+                string.Empty,
+                out JsonElement macrosElement,
+                out error))
+        {
+            return false;
+        }
+
+        if (macrosElement.ValueKind != JsonValueKind.Array)
+        {
+            error = Expected(
+                SettingsJsonErrorCode.ExpectedArray,
+                "macros",
+                "an array");
+            return false;
+        }
+
+        var macros = new List<MacroDefinitionCandidate?>();
+        int index = 0;
+        foreach (JsonElement macroElement in macrosElement.EnumerateArray())
+        {
+            if (!TryParseV3Macro(
+                    macroElement,
+                    $"macros[{index}]",
+                    out MacroDefinitionCandidate? macro,
+                    out error))
+            {
+                return false;
+            }
+            macros.Add(macro);
+            index++;
+        }
+
+        candidate = new ApplicationSettingsCandidate(macros);
+        return true;
+    }
+
     private static bool TryParseV1Macro(
         JsonElement element,
         out MacroDefinitionCandidate? macro,
@@ -388,7 +561,8 @@ internal static class SettingsJsonCodec
             SingleMacroCompatibility.LegacyMacroId,
             name,
             true,
-            hotkey,
+            new KeyboardMacroTrigger(hotkey!),
+            MacroExecutionMode.Once,
             sequence);
         return true;
     }
@@ -436,7 +610,57 @@ internal static class SettingsJsonCodec
             return false;
         }
 
-        macro = new MacroDefinitionCandidate(id, name, enabled, hotkey, sequence);
+        macro = new MacroDefinitionCandidate(
+            id,
+            name,
+            enabled,
+            new KeyboardMacroTrigger(hotkey!),
+            MacroExecutionMode.Once,
+            sequence);
+        return true;
+    }
+
+    private static bool TryParseV3Macro(
+        JsonElement element,
+        string path,
+        out MacroDefinitionCandidate? macro,
+        out SettingsJsonError? error)
+    {
+        macro = null;
+        if (!TryReadKnownObject(
+                element,
+                path,
+                V3MacroProperties,
+                out Dictionary<string, JsonElement> properties,
+                out error) ||
+            !TryGetRequiredProperty(properties, "id", path,
+                out JsonElement idElement, out error) ||
+            !TryParseMacroId(idElement, $"{path}.id", out MacroId? id, out error) ||
+            !TryGetRequiredProperty(properties, "name", path,
+                out JsonElement nameElement, out error) ||
+            !TryReadString(nameElement, $"{path}.name", out string? name, out error) ||
+            !TryGetRequiredProperty(properties, "enabled", path,
+                out JsonElement enabledElement, out error) ||
+            !TryReadBoolean(enabledElement, $"{path}.enabled",
+                out bool enabled, out error) ||
+            !TryGetRequiredProperty(properties, "trigger", path,
+                out JsonElement triggerElement, out error) ||
+            !TryParseTrigger(triggerElement, $"{path}.trigger",
+                out MacroTrigger? trigger, out error) ||
+            !TryGetRequiredProperty(properties, "executionMode", path,
+                out JsonElement modeElement, out error) ||
+            !TryParseExecutionMode(modeElement, $"{path}.executionMode",
+                out MacroExecutionMode executionMode, out error) ||
+            !TryGetRequiredProperty(properties, "steps", path,
+                out JsonElement stepsElement, out error) ||
+            !TryParseSteps(stepsElement, $"{path}.steps",
+                out MacroSequence? sequence, out error))
+        {
+            return false;
+        }
+
+        macro = new MacroDefinitionCandidate(
+            id, name, enabled, trigger, executionMode, sequence);
         return true;
     }
 
@@ -542,6 +766,128 @@ internal static class SettingsJsonCodec
         }
 
         hotkey = new KeyboardHotkey(key, modifiers);
+        return true;
+    }
+
+    private static bool TryParseTrigger(
+        JsonElement element,
+        string path,
+        out MacroTrigger? trigger,
+        out SettingsJsonError? error)
+    {
+        trigger = null;
+        if (!TryCollectObjectProperties(
+                element,
+                path,
+                out Dictionary<string, JsonElement> properties,
+                out error) ||
+            !TryGetRequiredProperty(properties, "kind", path,
+                out JsonElement kindElement, out error) ||
+            !TryReadString(kindElement, $"{path}.kind",
+                out string? kind, out error))
+        {
+            return false;
+        }
+
+        switch (kind)
+        {
+            case "keyboard":
+                if (!TryRejectUnknownProperties(
+                        element, path, KeyboardTriggerProperties, out error) ||
+                    !TryGetRequiredProperty(properties, "key", path,
+                        out JsonElement keyElement, out error) ||
+                    !TryReadString(keyElement, $"{path}.key",
+                        out string? keyToken, out error))
+                {
+                    return false;
+                }
+
+                if (!HotkeyKeyTokenMapper.TryParse(keyToken!, out HotkeyKey key))
+                {
+                    error = new SettingsJsonError(
+                        SettingsJsonErrorCode.UnknownHotkeyKey,
+                        $"{path}.key",
+                        $"Hotkey key token '{keyToken}' is not supported.");
+                    return false;
+                }
+
+                if (!TryGetRequiredProperty(properties, "modifiers", path,
+                        out JsonElement modifiersElement, out error) ||
+                    !TryParseModifiers(modifiersElement, $"{path}.modifiers",
+                        out HotkeyModifiers modifiers, out error))
+                {
+                    return false;
+                }
+
+                trigger = new KeyboardMacroTrigger(
+                    new KeyboardHotkey(key, modifiers));
+                return true;
+
+            case "mouseButton":
+                if (!TryRejectUnknownProperties(
+                        element, path, MouseTriggerProperties, out error) ||
+                    !TryGetRequiredProperty(properties, "button", path,
+                        out JsonElement buttonElement, out error) ||
+                    !TryReadString(buttonElement, $"{path}.button",
+                        out string? buttonToken, out error))
+                {
+                    return false;
+                }
+
+                MouseButton button = buttonToken switch
+                {
+                    "xButton1" => MouseButton.XButton1,
+                    "xButton2" => MouseButton.XButton2,
+                    _ => (MouseButton)(-1)
+                };
+                if (!Enum.IsDefined(button))
+                {
+                    error = new SettingsJsonError(
+                        SettingsJsonErrorCode.UnknownMouseButton,
+                        $"{path}.button",
+                        $"Mouse button token '{buttonToken}' is not supported.");
+                    return false;
+                }
+
+                trigger = new MouseButtonMacroTrigger(button);
+                return true;
+
+            default:
+                error = new SettingsJsonError(
+                    SettingsJsonErrorCode.UnknownTriggerKind,
+                    $"{path}.kind",
+                    $"Trigger kind token '{kind}' is not supported.");
+                return false;
+        }
+    }
+
+    private static bool TryParseExecutionMode(
+        JsonElement element,
+        string path,
+        out MacroExecutionMode executionMode,
+        out SettingsJsonError? error)
+    {
+        executionMode = default;
+        if (!TryReadString(element, path, out string? token, out error))
+        {
+            return false;
+        }
+
+        executionMode = token switch
+        {
+            "once" => MacroExecutionMode.Once,
+            "repeatWhileHeld" => MacroExecutionMode.RepeatWhileHeld,
+            _ => (MacroExecutionMode)(-1)
+        };
+        if (!Enum.IsDefined(executionMode))
+        {
+            error = new SettingsJsonError(
+                SettingsJsonErrorCode.UnknownExecutionMode,
+                path,
+                $"Execution mode token '{token}' is not supported.");
+            return false;
+        }
+
         return true;
     }
 
@@ -685,6 +1031,14 @@ internal static class SettingsJsonCodec
                     out step,
                     out error);
 
+            case "mouseButtonTap":
+                return TryParseMouseButtonTapStep(
+                    element,
+                    properties,
+                    path,
+                    out step,
+                    out error);
+
             default:
                 error = new SettingsJsonError(
                     SettingsJsonErrorCode.UnknownStepType,
@@ -772,6 +1126,37 @@ internal static class SettingsJsonCodec
 
         long ticks = milliseconds * TimeSpan.TicksPerMillisecond;
         step = new DelayStep(new TimeSpan(ticks));
+        return true;
+    }
+
+    private static bool TryParseMouseButtonTapStep(
+        JsonElement element,
+        IReadOnlyDictionary<string, JsonElement> properties,
+        string path,
+        out MacroStep? step,
+        out SettingsJsonError? error)
+    {
+        step = null;
+        if (!TryRejectUnknownProperties(
+                element, path, MouseButtonTapProperties, out error) ||
+            !TryGetRequiredProperty(properties, "button", path,
+                out JsonElement buttonElement, out error) ||
+            !TryReadString(buttonElement, $"{path}.button",
+                out string? token, out error))
+        {
+            return false;
+        }
+
+        if (token != "left")
+        {
+            error = new SettingsJsonError(
+                SettingsJsonErrorCode.UnknownOutputMouseButton,
+                $"{path}.button",
+                $"Output mouse button token '{token}' is not supported.");
+            return false;
+        }
+
+        step = new MouseButtonTapStep(MouseButton.Left);
         return true;
     }
 
@@ -1030,10 +1415,11 @@ internal static class SettingsJsonCodec
         Utf8JsonWriter writer,
         MacroDefinition macro)
     {
+        KeyboardHotkey hotkey = RequireKeyboardOnce(macro, V1Version);
         writer.WriteStartObject();
         writer.WriteString("name", macro.Name);
         writer.WritePropertyName("hotkey");
-        WriteHotkey(writer, macro.Hotkey, V1Version);
+        WriteHotkey(writer, hotkey, V1Version);
         writer.WritePropertyName("steps");
         writer.WriteStartArray();
 
@@ -1050,12 +1436,13 @@ internal static class SettingsJsonCodec
         Utf8JsonWriter writer,
         MacroDefinition macro)
     {
+        KeyboardHotkey hotkey = RequireKeyboardOnce(macro, V2Version);
         writer.WriteStartObject();
         writer.WriteString("id", macro.Id.ToString());
         writer.WriteString("name", macro.Name);
         writer.WriteBoolean("enabled", macro.Enabled);
         writer.WritePropertyName("hotkey");
-        WriteHotkey(writer, macro.Hotkey, V2Version);
+        WriteHotkey(writer, hotkey, V2Version);
         writer.WritePropertyName("steps");
         writer.WriteStartArray();
 
@@ -1068,7 +1455,96 @@ internal static class SettingsJsonCodec
         writer.WriteEndObject();
     }
 
+    private static void WriteV3Macro(
+        Utf8JsonWriter writer,
+        MacroDefinition macro)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("id", macro.Id.ToString());
+        writer.WriteString("name", macro.Name);
+        writer.WriteBoolean("enabled", macro.Enabled);
+        writer.WritePropertyName("trigger");
+        WriteTrigger(writer, macro.Trigger);
+        writer.WriteString(
+            "executionMode",
+            macro.ExecutionMode switch
+            {
+                MacroExecutionMode.Once => "once",
+                MacroExecutionMode.RepeatWhileHeld => "repeatWhileHeld",
+                _ => throw new InvalidOperationException(
+                    $"Execution mode '{macro.ExecutionMode}' cannot be written " +
+                    "as V3 JSON.")
+            });
+        writer.WritePropertyName("steps");
+        writer.WriteStartArray();
+        foreach (MacroStep step in macro.Sequence.Steps)
+        {
+            WriteStep(writer, step, V3Version);
+        }
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+    }
+
+    private static KeyboardHotkey RequireKeyboardOnce(
+        MacroDefinition macro,
+        int version)
+    {
+        if (macro.ExecutionMode != MacroExecutionMode.Once ||
+            macro.Trigger is not KeyboardMacroTrigger keyboard)
+        {
+            throw new InvalidOperationException(
+                $"Settings JSON version {version} can preserve only " +
+                "one-shot keyboard-triggered macros.");
+        }
+
+        return keyboard.Hotkey;
+    }
+
+    private static void WriteTrigger(
+        Utf8JsonWriter writer,
+        MacroTrigger trigger)
+    {
+        writer.WriteStartObject();
+        switch (trigger)
+        {
+            case KeyboardMacroTrigger keyboard:
+                writer.WriteString("kind", "keyboard");
+                WriteHotkeyContent(writer, keyboard.Hotkey, V3Version);
+                break;
+
+            case MouseButtonMacroTrigger mouse:
+                writer.WriteString("kind", "mouseButton");
+                writer.WriteString(
+                    "button",
+                    mouse.Button switch
+                    {
+                        MouseButton.XButton1 => "xButton1",
+                        MouseButton.XButton2 => "xButton2",
+                        _ => throw new InvalidOperationException(
+                            $"Mouse trigger button '{mouse.Button}' cannot be " +
+                            "written as V3 JSON.")
+                    });
+                break;
+
+            default:
+                throw new InvalidOperationException(
+                    $"Trigger type '{trigger.GetType().Name}' cannot be written " +
+                    "as V3 JSON.");
+        }
+        writer.WriteEndObject();
+    }
+
     private static void WriteHotkey(
+        Utf8JsonWriter writer,
+        KeyboardHotkey hotkey,
+        int version)
+    {
+        writer.WriteStartObject();
+        WriteHotkeyContent(writer, hotkey, version);
+        writer.WriteEndObject();
+    }
+
+    private static void WriteHotkeyContent(
         Utf8JsonWriter writer,
         KeyboardHotkey hotkey,
         int version)
@@ -1079,7 +1555,6 @@ internal static class SettingsJsonCodec
                 $"Hotkey key '{hotkey.Key}' cannot be written as V{version} JSON.");
         }
 
-        writer.WriteStartObject();
         writer.WriteString("key", keyToken);
         writer.WritePropertyName("modifiers");
         writer.WriteStartArray();
@@ -1100,7 +1575,6 @@ internal static class SettingsJsonCodec
         }
 
         writer.WriteEndArray();
-        writer.WriteEndObject();
     }
 
     private static void WriteStep(
@@ -1138,6 +1612,12 @@ internal static class SettingsJsonCodec
                 writer.WriteNumber(
                     "milliseconds",
                     delay.Duration.Ticks / TimeSpan.TicksPerMillisecond);
+                break;
+
+            case MouseButtonTapStep mouseTap when version == V3Version &&
+                mouseTap.Button == MouseButton.Left:
+                writer.WriteString("type", "mouseButtonTap");
+                writer.WriteString("button", "left");
                 break;
 
             default:

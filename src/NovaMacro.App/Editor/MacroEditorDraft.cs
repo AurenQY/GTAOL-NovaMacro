@@ -15,7 +15,10 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
     private readonly MacroId _macroId;
     private bool _enabled;
     private string _name;
+    private MacroTriggerEditorKind _triggerKind;
     private HotkeyKey _hotkeyKey;
+    private MouseButton _mouseButton;
+    private MacroExecutionMode _executionMode;
     private bool _control;
     private bool _alt;
     private bool _shift;
@@ -30,11 +33,41 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
         bool alt,
         bool shift,
         IEnumerable<MacroStepEditorDraft> steps)
+        : this(
+            macroId,
+            enabled,
+            name,
+            MacroTriggerEditorKind.Keyboard,
+            hotkeyKey,
+            MouseButton.XButton1,
+            MacroExecutionMode.Once,
+            control,
+            alt,
+            shift,
+            steps)
+    {
+    }
+
+    internal MacroEditorDraft(
+        MacroId macroId,
+        bool enabled,
+        string name,
+        MacroTriggerEditorKind triggerKind,
+        HotkeyKey hotkeyKey,
+        MouseButton mouseButton,
+        MacroExecutionMode executionMode,
+        bool control,
+        bool alt,
+        bool shift,
+        IEnumerable<MacroStepEditorDraft> steps)
     {
         _macroId = macroId;
         _enabled = enabled;
         _name = name;
+        _triggerKind = triggerKind;
         _hotkeyKey = hotkeyKey;
+        _mouseButton = mouseButton;
+        _executionMode = executionMode;
         _control = control;
         _alt = alt;
         _shift = shift;
@@ -98,10 +131,68 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
 
             _hotkeyKey = value;
             OnPropertyChanged(nameof(HotkeyKey));
-            OnPropertyChanged(nameof(HotkeyDisplay));
+            OnPropertyChanged(nameof(TriggerDisplay));
             OnChanged();
         }
     }
+
+    public MacroTriggerEditorKind TriggerKind
+    {
+        get => _triggerKind;
+        set
+        {
+            if (_triggerKind == value)
+            {
+                return;
+            }
+
+            _triggerKind = value;
+            OnPropertyChanged(nameof(TriggerKind));
+            OnPropertyChanged(nameof(IsKeyboardTrigger));
+            OnPropertyChanged(nameof(IsMouseTrigger));
+            OnPropertyChanged(nameof(TriggerDisplay));
+            OnChanged();
+        }
+    }
+
+    public MouseButton MouseButton
+    {
+        get => _mouseButton;
+        set
+        {
+            if (_mouseButton == value)
+            {
+                return;
+            }
+
+            _mouseButton = value;
+            OnPropertyChanged(nameof(MouseButton));
+            OnPropertyChanged(nameof(TriggerDisplay));
+            OnChanged();
+        }
+    }
+
+    public MacroExecutionMode ExecutionMode
+    {
+        get => _executionMode;
+        set
+        {
+            if (_executionMode == value)
+            {
+                return;
+            }
+
+            _executionMode = value;
+            OnPropertyChanged(nameof(ExecutionMode));
+            OnChanged();
+        }
+    }
+
+    public bool IsKeyboardTrigger =>
+        TriggerKind == MacroTriggerEditorKind.Keyboard;
+
+    public bool IsMouseTrigger =>
+        TriggerKind == MacroTriggerEditorKind.MouseButton;
 
     public bool Control
     {
@@ -115,7 +206,7 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
 
             _control = value;
             OnPropertyChanged(nameof(Control));
-            OnPropertyChanged(nameof(HotkeyDisplay));
+            OnPropertyChanged(nameof(TriggerDisplay));
             OnChanged();
         }
     }
@@ -132,7 +223,7 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
 
             _alt = value;
             OnPropertyChanged(nameof(Alt));
-            OnPropertyChanged(nameof(HotkeyDisplay));
+            OnPropertyChanged(nameof(TriggerDisplay));
             OnChanged();
         }
     }
@@ -149,17 +240,26 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
 
             _shift = value;
             OnPropertyChanged(nameof(Shift));
-            OnPropertyChanged(nameof(HotkeyDisplay));
+            OnPropertyChanged(nameof(TriggerDisplay));
             OnChanged();
         }
     }
 
     public ReadOnlyObservableCollection<MacroStepEditorDraft> Steps { get; }
 
-    public string HotkeyDisplay
+    public string TriggerDisplay
     {
         get
         {
+            if (TriggerKind == MacroTriggerEditorKind.MouseButton)
+            {
+                return MouseButton == MouseButton.XButton1
+                    ? "Mouse4"
+                    : MouseButton == MouseButton.XButton2
+                        ? "Mouse5"
+                        : MouseButton.ToString();
+            }
+
             var parts = new List<string>();
 
             if (Control)
@@ -195,6 +295,8 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
             steps.Add(step switch
             {
                 KeyTapStep keyTap => MacroStepEditorDraft.KeyTap(keyTap.Key),
+                MouseButtonTapStep mouseTap =>
+                    MacroStepEditorDraft.MouseButtonTap(mouseTap.Button),
                 DelayStep delay => MacroStepEditorDraft.Delay(
                     FormatMilliseconds(delay.Duration)),
                 _ => throw new InvalidOperationException(
@@ -202,13 +304,24 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
             });
         }
 
-        HotkeyModifiers modifiers = macro.Hotkey.Modifiers;
+        KeyboardHotkey keyboardHotkey = macro.Trigger is KeyboardMacroTrigger keyboard
+            ? keyboard.Hotkey
+            : new KeyboardHotkey(HotkeyKey.F8);
+        MouseButton mouseButton = macro.Trigger is MouseButtonMacroTrigger mouse
+            ? mouse.Button
+            : MouseButton.XButton1;
+        HotkeyModifiers modifiers = keyboardHotkey.Modifiers;
 
         return new MacroEditorDraft(
             macro.Id,
             macro.Enabled,
             macro.Name,
-            macro.Hotkey.Key,
+            macro.Trigger is KeyboardMacroTrigger
+                ? MacroTriggerEditorKind.Keyboard
+                : MacroTriggerEditorKind.MouseButton,
+            keyboardHotkey.Key,
+            mouseButton,
+            macro.ExecutionMode,
             (modifiers & HotkeyModifiers.Control) != 0,
             (modifiers & HotkeyModifiers.Alt) != 0,
             (modifiers & HotkeyModifiers.Shift) != 0,
@@ -223,6 +336,11 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
     internal void AddDelay()
     {
         AddStep(MacroStepEditorDraft.Delay("150"));
+    }
+
+    internal void AddMouseButtonTap()
+    {
+        AddStep(MacroStepEditorDraft.MouseButtonTap(MouseButton.Left));
     }
 
     internal void Remove(MacroStepEditorDraft step)
@@ -289,6 +407,12 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
                 continue;
             }
 
+            if (step.Kind == MacroStepEditorKind.MouseButtonTap)
+            {
+                steps.Add(new MouseButtonTapStep(step.MouseButton));
+                continue;
+            }
+
             if (!TryParseDelay(step.MillisecondsText, out TimeSpan duration))
             {
                 errors.Add(new EditorParseError(
@@ -326,11 +450,22 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
             modifiers |= HotkeyModifiers.Shift;
         }
 
+        MacroTrigger trigger = TriggerKind switch
+        {
+            MacroTriggerEditorKind.Keyboard => new KeyboardMacroTrigger(
+                new KeyboardHotkey(HotkeyKey, modifiers)),
+            MacroTriggerEditorKind.MouseButton =>
+                new MouseButtonMacroTrigger(MouseButton),
+            _ => throw new InvalidOperationException(
+                $"Unsupported editor trigger kind '{TriggerKind}'.")
+        };
+
         candidate = new MacroDefinitionCandidate(
             _macroId,
             Name,
             _enabled,
-            new KeyboardHotkey(HotkeyKey, modifiers),
+            trigger,
+            ExecutionMode,
             new MacroSequence(steps));
 
         return true;
@@ -401,12 +536,20 @@ internal sealed class MacroEditorDraft : INotifyPropertyChanged
 internal enum MacroStepEditorKind
 {
     KeyTap,
+    MouseButtonTap,
     Delay
+}
+
+public enum MacroTriggerEditorKind
+{
+    Keyboard,
+    MouseButton
 }
 
 internal sealed class MacroStepEditorDraft : INotifyPropertyChanged
 {
     private KeyboardKey _key;
+    private MouseButton _mouseButton;
     private string _millisecondsText;
     private int _position;
     private bool _canMoveUp;
@@ -415,10 +558,12 @@ internal sealed class MacroStepEditorDraft : INotifyPropertyChanged
     private MacroStepEditorDraft(
         MacroStepEditorKind kind,
         KeyboardKey key,
+        MouseButton mouseButton,
         string millisecondsText)
     {
         Kind = kind;
         _key = key;
+        _mouseButton = mouseButton;
         _millisecondsText = millisecondsText;
     }
 
@@ -430,12 +575,19 @@ internal sealed class MacroStepEditorDraft : INotifyPropertyChanged
 
     public int Position => _position;
 
-    public string TypeLabel =>
-        Kind == MacroStepEditorKind.KeyTap ? "Key Tap" : "Delay";
+    public string TypeLabel => Kind switch
+    {
+        MacroStepEditorKind.KeyTap => "Key Tap",
+        MacroStepEditorKind.MouseButtonTap => "Mouse Tap",
+        _ => "Delay"
+    };
 
     public bool IsKeyTap => Kind == MacroStepEditorKind.KeyTap;
 
     public bool IsDelay => Kind == MacroStepEditorKind.Delay;
+
+    public bool IsMouseButtonTap =>
+        Kind == MacroStepEditorKind.MouseButtonTap;
 
     public bool CanMoveUp => _canMoveUp;
 
@@ -453,6 +605,22 @@ internal sealed class MacroStepEditorDraft : INotifyPropertyChanged
 
             _key = value;
             OnPropertyChanged(nameof(Key));
+            OnChanged();
+        }
+    }
+
+    public MouseButton MouseButton
+    {
+        get => _mouseButton;
+        set
+        {
+            if (_mouseButton == value)
+            {
+                return;
+            }
+
+            _mouseButton = value;
+            OnPropertyChanged(nameof(MouseButton));
             OnChanged();
         }
     }
@@ -478,6 +646,16 @@ internal sealed class MacroStepEditorDraft : INotifyPropertyChanged
         return new MacroStepEditorDraft(
             MacroStepEditorKind.KeyTap,
             key,
+            MouseButton.Left,
+            string.Empty);
+    }
+
+    internal static MacroStepEditorDraft MouseButtonTap(MouseButton button)
+    {
+        return new MacroStepEditorDraft(
+            MacroStepEditorKind.MouseButtonTap,
+            KeyboardKey.A,
+            button,
             string.Empty);
     }
 
@@ -488,6 +666,7 @@ internal sealed class MacroStepEditorDraft : INotifyPropertyChanged
         return new MacroStepEditorDraft(
             MacroStepEditorKind.Delay,
             KeyboardKey.A,
+            MouseButton.Left,
             millisecondsText);
     }
 

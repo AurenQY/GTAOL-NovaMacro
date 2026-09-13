@@ -109,7 +109,8 @@ internal sealed class JsonSettingsStore : ISettingsStore
                 "Settings must contain valid UTF-8 text."));
         }
 
-        SettingsJsonReadResult jsonResult = SettingsJsonCodec.ReadV1OrV2(json);
+        SettingsJsonReadResult jsonResult =
+            SettingsJsonCodec.ReadV1OrV2OrV3(json);
 
         return jsonResult.IsSuccess
             ? SettingsLoadResult.Loaded(jsonResult.Settings!)
@@ -122,7 +123,7 @@ internal sealed class JsonSettingsStore : ISettingsStore
 
         // Codec failures indicate a broken runtime invariant and deliberately
         // remain programmer errors rather than filesystem failures.
-        string json = SettingsJsonCodec.WriteV2(settings);
+        string json = SettingsJsonCodec.WriteV3(settings);
         byte[] content = Utf8WithoutBom.GetBytes(json);
 
         try

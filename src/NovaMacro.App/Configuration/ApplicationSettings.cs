@@ -31,7 +31,8 @@ internal sealed class MacroDefinition
         MacroId id,
         string name,
         bool enabled,
-        KeyboardHotkey hotkey,
+        MacroTrigger trigger,
+        MacroExecutionMode executionMode,
         MacroSequence sequence)
     {
         if (id.IsEmpty)
@@ -42,14 +43,31 @@ internal sealed class MacroDefinition
         }
 
         ArgumentNullException.ThrowIfNull(name);
-        ArgumentNullException.ThrowIfNull(hotkey);
+        ArgumentNullException.ThrowIfNull(trigger);
         ArgumentNullException.ThrowIfNull(sequence);
 
         Id = id;
         Name = name;
         Enabled = enabled;
-        Hotkey = hotkey;
+        Trigger = trigger;
+        ExecutionMode = executionMode;
         Sequence = sequence;
+    }
+
+    internal MacroDefinition(
+        MacroId id,
+        string name,
+        bool enabled,
+        KeyboardHotkey hotkey,
+        MacroSequence sequence)
+        : this(
+            id,
+            name,
+            enabled,
+            new KeyboardMacroTrigger(hotkey),
+            MacroExecutionMode.Once,
+            sequence)
+    {
     }
 
     internal MacroId Id { get; }
@@ -58,7 +76,9 @@ internal sealed class MacroDefinition
 
     internal bool Enabled { get; }
 
-    internal KeyboardHotkey Hotkey { get; }
+    internal MacroTrigger Trigger { get; }
+
+    internal MacroExecutionMode ExecutionMode { get; }
 
     internal MacroSequence Sequence { get; }
 }

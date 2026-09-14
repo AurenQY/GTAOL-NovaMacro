@@ -43,8 +43,10 @@ public sealed class MultiIntegrationStartupTests
         MultiMacroRuntimeStatus status = runtime.Start();
 
         Assert.Equal(StartupConfigurationStatus.StarterReady, startup.Status);
-        Assert.Equal(SingleMacroCompatibility.LegacyMacroId,
-            Assert.Single(draft.Macros).Id);
+        Assert.Equal(4, draft.Macros.Count);
+        Assert.All(draft.Macros, macro => Assert.True(macro.Enabled));
+        Assert.All(draft.Macros, macro =>
+            Assert.NotEqual(SingleMacroCompatibility.LegacyMacroId, macro.Id));
         Assert.Equal(MultiMacroRuntimeState.Active, status.State);
         Assert.Equal(1, factoryCalls);
         Assert.False(File.Exists(path));
@@ -192,7 +194,7 @@ public sealed class MultiIntegrationStartupTests
             Assert.Empty(updates);
             Assert.Same(initial, coordinator.CurrentStatus);
             Assert.Equal(
-                "Runtime active: all enabled macros are registered.",
+                "Runtime: Active",
                 RuntimeStatusPresentation.FromInitial(
                     initial,
                     RuntimeSettings()).Message);

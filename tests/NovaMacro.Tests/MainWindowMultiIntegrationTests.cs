@@ -75,6 +75,65 @@ public sealed class MainWindowMultiIntegrationTests
     }
 
     [Fact]
+    public void HealthyRuntime_UsesCompactStatusAndHiddenValidationSuccessPanel()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = temporary.GetPath("data", "settings.json");
+        ApplicationSettings settings = Settings("A", HotkeyKey.F8);
+        WriteSettings(path, settings);
+
+        RunInSta(() =>
+        {
+            var store = new JsonSettingsStore(path);
+            StartupConfigurationResult startup = Resolve(store);
+            var window = new MainWindow(new MacroEditorSaveCoordinator(store), startup);
+            MacroDefinition macro = Assert.Single(startup.RuntimeSettings!.Macros);
+
+            window.PresentInitialRuntimeStatus(new MultiMacroRuntimeStatus(
+                MultiMacroRuntimeState.Active,
+                new[] { new RuntimeMacroStatus(macro.Id, RuntimeMacroState.Active) }),
+                startup.RuntimeSettings);
+
+            Border runtimePanel = Named<Border>(window, "RuntimeStatusPanel");
+            TextBlock runtimeStatus = Named<TextBlock>(window, "RuntimeStatusText");
+            MultiMacroEditorControl editor = Assert.IsType<MultiMacroEditorControl>(
+                Named<ContentControl>(window, "MultiEditorHost").Content);
+            TextBlock restartNote = Named<TextBlock>(window, "RestartNoteText");
+
+            Assert.Equal("Runtime: Active", runtimeStatus.Text);
+            Assert.Equal(new Thickness(0), runtimePanel.Padding);
+            Assert.Equal(new Thickness(0), runtimePanel.BorderThickness);
+            Assert.Equal(Visibility.Collapsed, Named<ScrollViewer>(window,
+                "RuntimeDiagnosticsScrollViewer").Visibility);
+            Assert.Equal(Visibility.Collapsed, Named<Border>(editor,
+                "ValidationPanel").Visibility);
+            Assert.Equal("Changes apply after restart.", restartNote.Text);
+            Assert.NotNull(restartNote.ToolTip);
+        });
+    }
+
+    [Fact]
+    public void MainWindow_UsesCompactResizableDesktopUtilityDimensions()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = temporary.GetPath("data", "settings.json");
+        WriteSettings(path, Settings("A", HotkeyKey.F8));
+
+        RunInSta(() =>
+        {
+            var store = new JsonSettingsStore(path);
+            var window = new MainWindow(new MacroEditorSaveCoordinator(store),
+                Resolve(store));
+
+            Assert.Equal(900, window.Width);
+            Assert.Equal(650, window.Height);
+            Assert.Equal(760, window.MinWidth);
+            Assert.Equal(540, window.MinHeight);
+            Assert.Equal(ResizeMode.CanResize, window.ResizeMode);
+        });
+    }
+
+    [Fact]
     public void InvalidEditProductionSaveBoundary_LeavesCanonicalBytesUntouched()
     {
         using var temporary = new TemporaryDirectory();
@@ -101,11 +160,13 @@ public sealed class MainWindowMultiIntegrationTests
             ItemsControl errors = Named<ItemsControl>(editor, "ValidationErrorsList");
             Assert.Contains("macros[0].name: Macro name is required.",
                 errors.Items.Cast<string>());
+            Assert.Equal(Visibility.Visible, Named<Border>(editor,
+                "ValidationPanel").Visibility);
         });
     }
 
     [Fact]
-    public void InvalidRecovery_LeavesSourceBytesAndPresentsUsableStarterEditor()
+    public void InvalidRecovery_LeavesSourceBytesAndPresentsUsableEmptyEditor()
     {
         using var temporary = new TemporaryDirectory();
         string path = temporary.GetPath("data", "settings.json");
@@ -122,8 +183,8 @@ public sealed class MainWindowMultiIntegrationTests
             Assert.Equal(StartupConfigurationStatus.InvalidRecovery, startup.Status);
             Assert.Null(startup.RuntimeSettings);
             Assert.Equal(invalid, File.ReadAllBytes(path));
-            Assert.Equal(SingleMacroCompatibility.LegacyMacroId,
-                Assert.Single(window.Draft.Macros).Id);
+            Assert.Empty(window.Draft.Macros);
+            Assert.Null(window.Draft.SelectedMacro);
             TextBlock runtimeStatus = Named<TextBlock>(window, "RuntimeStatusText");
             Assert.Contains("could not be loaded", runtimeStatus.Text);
             Assert.True(Named<ScrollViewer>(window,
@@ -236,6 +297,8 @@ public sealed class MainWindowMultiIntegrationTests
                 window,
                 "RuntimeDiagnosticsList");
             Assert.StartsWith("B (F9):", Assert.Single(diagnostics.Items.Cast<string>()));
+            Assert.Equal(new Thickness(1), Named<Border>(window,
+                "RuntimeStatusPanel").BorderThickness);
             Assert.True(window.Draft.Macros.All(macro => macro.Enabled));
             Assert.Equal(new[] { "A", "B", "C" },
                 window.Draft.Macros.Select(macro => macro.Name));
@@ -280,6 +343,42 @@ public sealed class MainWindowMultiIntegrationTests
             Assert.Equal(new[] { "A", "B" },
                 window.Draft.Macros.Select(macro => macro.Name));
             Assert.True(Named<Button>(window, "SaveButton").IsEnabled);
+        });
+    }
+
+    [Fact]
+    public void ServiceUnavailableRuntime_RemainsExpandedWithDiagnostics()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = temporary.GetPath("data", "settings.json");
+        ApplicationSettings settings = Settings("A", HotkeyKey.F8);
+        WriteSettings(path, settings);
+
+        RunInSta(() =>
+        {
+            var store = new JsonSettingsStore(path);
+            StartupConfigurationResult startup = Resolve(store);
+            var window = new MainWindow(new MacroEditorSaveCoordinator(store), startup);
+            MacroDefinition macro = Assert.Single(startup.RuntimeSettings!.Macros);
+
+            window.PresentRuntimeStatusUpdate(new MultiMacroRuntimeStatus(
+                MultiMacroRuntimeState.ServiceUnavailable,
+                new[]
+                {
+                    new RuntimeMacroStatus(
+                        macro.Id,
+                        RuntimeMacroState.RuntimeUnavailable,
+                        "The service stopped.")
+                }), startup.RuntimeSettings);
+
+            Assert.Contains("Runtime unavailable", Named<TextBlock>(window,
+                "RuntimeStatusText").Text);
+            Assert.Equal(Visibility.Visible, Named<ScrollViewer>(window,
+                "RuntimeDiagnosticsScrollViewer").Visibility);
+            Assert.Contains("The service stopped.", Named<ItemsControl>(window,
+                "RuntimeDiagnosticsList").Items.Cast<string>());
+            Assert.Equal(new Thickness(1), Named<Border>(window,
+                "RuntimeStatusPanel").BorderThickness);
         });
     }
 

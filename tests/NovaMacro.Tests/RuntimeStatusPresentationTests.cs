@@ -86,7 +86,7 @@ public sealed class RuntimeStatusPresentationTests
 
     [Theory]
     [InlineData((int)MultiMacroRuntimeState.Active,
-        "Runtime active: all enabled macros are registered.")]
+        "Runtime: Active")]
     [InlineData((int)MultiMacroRuntimeState.PartiallyActive,
         "Runtime partially active: some enabled macros could not be registered.")]
     [InlineData((int)MultiMacroRuntimeState.NoEnabledMacros,
@@ -109,6 +109,26 @@ public sealed class RuntimeStatusPresentationTests
         Assert.Equal(
             expectedMessage,
             RuntimeStatusPresentation.FromUpdate(status, startup).Message);
+    }
+
+    [Fact]
+    public void OnlyFullyActiveRuntimeIsHealthyForCompactPresentation()
+    {
+        var startup = new ApplicationSettings(new[] { Macro("A", HotkeyKey.F8) });
+
+        RuntimeStatusPresentation active = RuntimeStatusPresentation.FromInitial(
+            new MultiMacroRuntimeStatus(
+                MultiMacroRuntimeState.Active,
+                Array.Empty<RuntimeMacroStatus>()),
+            startup);
+        RuntimeStatusPresentation partial = RuntimeStatusPresentation.FromInitial(
+            new MultiMacroRuntimeStatus(
+                MultiMacroRuntimeState.PartiallyActive,
+                Array.Empty<RuntimeMacroStatus>()),
+            startup);
+
+        Assert.True(active.IsHealthy);
+        Assert.False(partial.IsHealthy);
     }
 
     private static MacroDefinition Macro(string name, HotkeyKey hotkey)

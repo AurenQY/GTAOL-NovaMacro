@@ -14,7 +14,7 @@ namespace NovaMacro.Tests;
 public sealed class FinalProductPresetIntegrationTests
 {
     [Fact]
-    public void MissingSettings_UsesOnlyLegacyStarterWhileCatalogRemainsAvailable()
+    public void MissingSettings_ProvidesGtaFirstRunDefaultsRegistersTheirTriggersAndDoesNotWrite()
     {
         using var temporary = new TemporaryDirectory();
         string path = temporary.GetPath("data", "settings.json");
@@ -22,240 +22,173 @@ public sealed class FinalProductPresetIntegrationTests
 
         StartupConfigurationResult startup =
             new StartupConfigurationCoordinator(store).Resolve();
-        MultiMacroEditorDraft draft = MultiMacroEditorDraft.From(
-            startup.InitialEditorSettings);
-        using var native = new FakeGlobalHotkeyNativeApi();
-        var scheduler = new FakeHotkeyTriggerWorkScheduler();
-        var service = new WindowsGlobalHotkeyService(native, scheduler);
+        using var keyboardNative = new FakeGlobalHotkeyNativeApi();
+        var keyboardScheduler = new FakeHotkeyTriggerWorkScheduler();
+        var keyboardService = new WindowsGlobalHotkeyService(
+            keyboardNative,
+            keyboardScheduler);
+        using var mouseNative = new FakeGlobalMouseButtonNativeApi();
+        var mouseScheduler = new FakeHotkeyTriggerWorkScheduler();
+        using var mouseService = new WindowsGlobalMouseButtonService(
+            mouseNative,
+            mouseScheduler);
         using var runtime = new MultiMacroHotkeyCoordinator(
             startup.RuntimeSettings!,
-            () => service,
-            new MacroRunner(new NoOpKeyboardOutput(), new ImmediateDelay()));
+            () => keyboardService,
+            new MacroRunner(
+                new NoOpKeyboardOutput(),
+                new NoOpMouseOutput(),
+                new ImmediateDelay()),
+            mouseButtonServiceFactory: () => mouseService);
 
         MultiMacroRuntimeStatus status = runtime.Start();
-        MacroEditorDraft starter = Assert.Single(draft.Macros);
-        Assert.True(draft.TryBuildSettings(
-            out ApplicationSettings? draftSettings,
-            out MacroEditorValidationResult validation));
-        Assert.True(validation.IsValid);
 
         Assert.Equal(StartupConfigurationStatus.StarterReady, startup.Status);
-        Assert.Equal(SingleMacroCompatibility.LegacyMacroId, starter.Id);
-        Assert.True(starter.Enabled);
-        Assert.Equal(HotkeyKey.F8, starter.HotkeyKey);
-        Assert.Equal(BuiltInMacroSequences.AbcTest.Steps,
-            Assert.Single(draftSettings!.Macros).Sequence.Steps);
-        Assert.Single(BuiltInPresetCatalog.All);
+        Assert.Equal(BuiltInPresetCatalog.All.Select(preset => preset.Name),
+            startup.InitialEditorSettings.Macros.Select(macro => macro.Name));
+        Assert.Equal(BuiltInPresetCatalog.All.Select(preset => preset.Trigger),
+            startup.RuntimeSettings!.Macros.Select(macro => macro.Trigger));
+        Assert.Equal(BuiltInPresetCatalog.All.Select(preset => preset.ExecutionMode),
+            startup.RuntimeSettings!.Macros.Select(macro => macro.ExecutionMode));
+        Assert.All(startup.RuntimeSettings!.Macros, macro => Assert.True(macro.Enabled));
+        Assert.All(startup.RuntimeSettings!.Macros, macro =>
+            Assert.NotEqual(SingleMacroCompatibility.LegacyMacroId, macro.Id));
+        Assert.Equal(4, startup.RuntimeSettings!.Macros.Select(macro => macro.Id)
+            .Distinct().Count());
         Assert.Equal(MultiMacroRuntimeState.Active, status.State);
-        Assert.Equal(new[] { 0x77u },
-            native.RegisterCalls.Select(call => call.VirtualKey));
+        Assert.Equal(new[] { 0x52u, 0x45u, 0x48u },
+            keyboardNative.RegisterCalls.Select(call => call.VirtualKey));
+        Assert.Equal(new[] { 0x4001u, 0x4001u, 0x4003u },
+            keyboardNative.RegisterCalls.Select(call => call.Modifiers));
+        Assert.DoesNotContain(keyboardNative.RegisterCalls,
+            call => call.VirtualKey == 0x77u);
+        Assert.Equal(1, mouseNative.InstallCallCount);
         Assert.False(File.Exists(path));
     }
 
-    [Fact]
-    public void V1Migration_AddPresetAndExplicitSaveWritesTwoOrdinaryV2Macros()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void ExistingSettings_AreLoadedWithoutGtaPresetInjectionOrAutoWrite(int version)
     {
         using var temporary = new TemporaryDirectory();
         string path = temporary.GetPath("data", "settings.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        byte[] v1 = Encoding.UTF8.GetBytes(SettingsJsonTestSupport.ValidJson);
-        File.WriteAllBytes(path, v1);
-        var store = new JsonSettingsStore(path);
-
-        StartupConfigurationResult startup =
-            new StartupConfigurationCoordinator(store).Resolve();
-        MultiMacroEditorDraft draft = MultiMacroEditorDraft.From(
-            startup.InitialEditorSettings);
-        MacroEditorDraft migrated = Assert.Single(draft.Macros);
-        MacroEditorDraft presetCopy = draft.AddFromPreset(
-            Assert.Single(BuiltInPresetCatalog.All));
-        presetCopy.HotkeyKey = HotkeyKey.F9;
-
-        Assert.Equal(SingleMacroCompatibility.LegacyMacroId, migrated.Id);
-        Assert.True(migrated.Enabled);
-        Assert.Equal(v1, File.ReadAllBytes(path));
-        Assert.Equal(MacroEditorSaveStatus.Saved,
-            new MacroEditorSaveCoordinator(store).Save(draft).Status);
-
-        string v2 = File.ReadAllText(path);
-        ApplicationSettings reloaded = AssertLoaded(store.Load());
-
-        Assert.Equal(2, reloaded.Macros.Count);
-        Assert.Equal(new[] { migrated.Id, presetCopy.Id },
-            reloaded.Macros.Select(macro => macro.Id));
-        Assert.Equal(new[] { migrated.Name, "ABC Test" },
-            reloaded.Macros.Select(macro => macro.Name));
-        Assert.Equal(new[] { HotkeyKey.F8, HotkeyKey.F9 },
-            reloaded.Macros.Select(macro => macro.GetKeyboardHotkey().Key));
-        Assert.Equal(BuiltInMacroSequences.AbcTest.Steps,
-            reloaded.Macros[1].Sequence.Steps);
-        Assert.DoesNotContain("preset", v2, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("template", v2, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("origin", v2, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void SavedPresetCopy_DoesNotLiveApplyButRegistersWithAllMacrosAfterRestart()
-    {
-        using var temporary = new TemporaryDirectory();
-        string path = temporary.GetPath("data", "settings.json");
-        var store = new JsonSettingsStore(path);
-        ApplicationSettings original = Settings(
-            Macro("11111111-1111-1111-1111-111111111111", "A", HotkeyKey.F8),
-            Macro("22222222-2222-2222-2222-222222222222", "B", HotkeyKey.F10));
-        Assert.True(store.Save(original).IsSuccess);
-
-        StartupConfigurationResult initial =
-            new StartupConfigurationCoordinator(store).Resolve();
-
-        using (var native = new FakeGlobalHotkeyNativeApi())
+        string serialized = version switch
         {
-            var scheduler = new FakeHotkeyTriggerWorkScheduler();
-            var service = new WindowsGlobalHotkeyService(native, scheduler);
-            using var runtime = new MultiMacroHotkeyCoordinator(
-                initial.RuntimeSettings!,
-                () => service,
-                new MacroRunner(new NoOpKeyboardOutput(), new ImmediateDelay()));
+            1 => SettingsJsonTestSupport.ValidJson,
+            2 => SettingsJsonCodec.WriteV2(ExistingSettings()),
+            3 => SettingsJsonCodec.WriteV3(ExistingSettings()),
+            _ => throw new ArgumentOutOfRangeException(nameof(version))
+        };
+        byte[] original = Encoding.UTF8.GetBytes(serialized);
+        File.WriteAllBytes(path, original);
 
-            Assert.Equal(MultiMacroRuntimeState.Active, runtime.Start().State);
-            var draft = MultiMacroEditorDraft.From(initial.InitialEditorSettings);
-            MacroEditorDraft copy = draft.AddFromPreset(
-                Assert.Single(BuiltInPresetCatalog.All));
-            copy.HotkeyKey = HotkeyKey.F9;
+        StartupConfigurationResult startup = new StartupConfigurationCoordinator(
+            new JsonSettingsStore(path)).Resolve();
 
-            Assert.Equal(MacroEditorSaveStatus.Saved,
-                new MacroEditorSaveCoordinator(store).Save(draft).Status);
-            Assert.Equal(new[] { 0x77u, 0x79u },
-                native.RegisterCalls.Select(call => call.VirtualKey));
-            Assert.Equal(2, initial.RuntimeSettings!.Macros.Count);
-        }
-
-        StartupConfigurationResult restarted =
-            new StartupConfigurationCoordinator(store).Resolve();
-
-        using var restartNative = new FakeGlobalHotkeyNativeApi();
-        var restartScheduler = new FakeHotkeyTriggerWorkScheduler();
-        var restartService = new WindowsGlobalHotkeyService(
-            restartNative,
-            restartScheduler);
-        using var restartedRuntime = new MultiMacroHotkeyCoordinator(
-            restarted.RuntimeSettings!,
-            () => restartService,
-            new MacroRunner(new NoOpKeyboardOutput(), new ImmediateDelay()));
-
-        Assert.Equal(MultiMacroRuntimeState.Active, restartedRuntime.Start().State);
-        Assert.Equal(new[] { "A", "B", "ABC Test" },
-            restarted.RuntimeSettings!.Macros.Select(macro => macro.Name));
-        Assert.Equal(new[] { 0x77u, 0x79u, 0x78u },
-            restartNative.RegisterCalls.Select(call => call.VirtualKey));
+        Assert.Equal(StartupConfigurationStatus.SavedReady, startup.Status);
+        Assert.Single(startup.InitialEditorSettings.Macros);
+        Assert.Single(startup.RuntimeSettings!.Macros);
+        Assert.DoesNotContain(startup.InitialEditorSettings.Macros,
+            macro => BuiltInPresetCatalog.All.Any(preset => preset.Name == macro.Name));
+        Assert.Equal(original, File.ReadAllBytes(path));
     }
 
-    [Fact]
-    public void InvalidRecovery_AddPresetThenExplicitSavePublishesCompleteV2()
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void ValidEmptySettings_RemainEmptyWithoutGtaPresetInjection(int version)
     {
         using var temporary = new TemporaryDirectory();
         string path = temporary.GetPath("data", "settings.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        byte[] invalid = Encoding.UTF8.GetBytes("{\"version\":2,\"macros\":[}");
-        File.WriteAllBytes(path, invalid);
-        var store = new JsonSettingsStore(path);
+        var empty = new ApplicationSettings(Array.Empty<MacroDefinition>());
+        File.WriteAllText(path, version == 2
+            ? SettingsJsonCodec.WriteV2(empty)
+            : SettingsJsonCodec.WriteV3(empty));
+        byte[] original = File.ReadAllBytes(path);
 
-        StartupConfigurationResult recovery =
-            new StartupConfigurationCoordinator(store).Resolve();
-        MultiMacroEditorDraft draft = MultiMacroEditorDraft.From(
-            recovery.InitialEditorSettings);
-        MacroEditorDraft copy = draft.AddFromPreset(
-            Assert.Single(BuiltInPresetCatalog.All));
-        copy.HotkeyKey = HotkeyKey.F9;
+        StartupConfigurationResult startup = new StartupConfigurationCoordinator(
+            new JsonSettingsStore(path)).Resolve();
 
-        Assert.Equal(StartupConfigurationStatus.InvalidRecovery, recovery.Status);
-        Assert.Null(recovery.RuntimeSettings);
-        Assert.Equal(invalid, File.ReadAllBytes(path));
-        Assert.Equal(MacroEditorSaveStatus.Saved,
-            new MacroEditorSaveCoordinator(store).Save(draft).Status);
-
-        ApplicationSettings saved = AssertLoaded(store.Load());
-        Assert.Equal(2, saved.Macros.Count);
-        Assert.Equal(new[] { HotkeyKey.F8, HotkeyKey.F9 },
-            saved.Macros.Select(macro => macro.GetKeyboardHotkey().Key));
-        Assert.Equal(BuiltInMacroSequences.AbcTest.Steps,
-            saved.Macros[1].Sequence.Steps);
+        Assert.Equal(StartupConfigurationStatus.SavedReady, startup.Status);
+        Assert.Empty(startup.InitialEditorSettings.Macros);
+        Assert.Empty(startup.RuntimeSettings!.Macros);
+        Assert.Equal(original, File.ReadAllBytes(path));
     }
 
     [Fact]
-    public void TestLocalFutureTemplates_CopyInCallerOrderAndUseNormalHotkeyValidation()
+    public void InvalidSettings_RemainRecoveryOnlyWithoutGtaDefaultsOrAutoWrite()
     {
-        var firstTemplate = new BuiltInPresetDefinition(
-            "first-template",
-            "Same display name",
+        using var temporary = new TemporaryDirectory();
+        string path = temporary.GetPath("data", "settings.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        byte[] invalid = Encoding.UTF8.GetBytes("{\"version\":3,\"macros\":[}");
+        File.WriteAllBytes(path, invalid);
+
+        StartupConfigurationResult startup = new StartupConfigurationCoordinator(
+            new JsonSettingsStore(path)).Resolve();
+
+        Assert.Equal(StartupConfigurationStatus.InvalidRecovery, startup.Status);
+        Assert.Empty(startup.InitialEditorSettings.Macros);
+        Assert.Null(startup.RuntimeSettings);
+        Assert.Equal(invalid, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void SavedDeletionOfAFactoryMacro_RemainsAuthoritativeOnRestart()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = temporary.GetPath("data", "settings.json");
+        var store = new JsonSettingsStore(path);
+        StartupConfigurationResult firstRun = new StartupConfigurationCoordinator(
+            store).Resolve();
+        MultiMacroEditorDraft draft = MultiMacroEditorDraft.From(
+            firstRun.InitialEditorSettings);
+
+        Assert.True(draft.DeleteSelectedMacro());
+        Assert.Equal(MacroEditorSaveStatus.Saved,
+            new MacroEditorSaveCoordinator(store).Save(draft).Status);
+
+        StartupConfigurationResult restarted = new StartupConfigurationCoordinator(
+            store).Resolve();
+
+        Assert.Equal(StartupConfigurationStatus.SavedReady, restarted.Status);
+        Assert.Equal(3, restarted.InitialEditorSettings.Macros.Count);
+        Assert.DoesNotContain(restarted.InitialEditorSettings.Macros,
+            macro => macro.Name == "Buy All Ammo");
+        Assert.DoesNotContain(restarted.InitialEditorSettings.Macros,
+            macro => macro.Name == "New Macro");
+    }
+
+    private static ApplicationSettings ExistingSettings() => new(new[]
+    {
+        new MacroDefinition(
+            new MacroId(new Guid("11111111-1111-1111-1111-111111111111")),
+            "Existing macro",
             enabled: true,
-            new KeyboardHotkey(HotkeyKey.F8),
-            new MacroSequence(new MacroStep[] { new KeyTapStep(KeyboardKey.A) }));
-        var secondTemplate = new BuiltInPresetDefinition(
-            "second-template",
-            "Same display name",
-            enabled: true,
-            new KeyboardHotkey(HotkeyKey.F8),
-            new MacroSequence(new MacroStep[] { new KeyTapStep(KeyboardKey.B) }));
-        var draft = MultiMacroEditorDraft.From(
-            new ApplicationSettings(Array.Empty<MacroDefinition>()));
-
-        MacroEditorDraft first = draft.AddFromPreset(firstTemplate);
-        MacroEditorDraft second = draft.AddFromPreset(secondTemplate);
-        MacroEditorValidationResult conflicting = draft.Validate();
-
-        Assert.Equal(new[] { "Same display name", "Same display name" },
-            draft.Macros.Select(macro => macro.Name));
-        Assert.NotEqual(first.Id, second.Id);
-        Assert.Equal(KeyboardKey.A, first.Steps.Single().Key);
-        Assert.Equal(KeyboardKey.B, second.Steps.Single().Key);
-        Assert.Contains(conflicting.ConfigurationErrors,
-            error => error.Code == ConfigurationValidationErrorCode.DuplicateEnabledTrigger);
-
-        second.Enabled = false;
-
-        Assert.True(draft.Validate().IsValid);
-    }
-
-    private static ApplicationSettings Settings(params MacroDefinition[] macros)
-    {
-        return new ApplicationSettings(macros);
-    }
-
-    private static MacroDefinition Macro(string id, string name, HotkeyKey hotkey)
-    {
-        return new MacroDefinition(
-            new MacroId(new Guid(id)),
-            name,
-            enabled: true,
-            new KeyboardHotkey(hotkey),
-            new MacroSequence(new MacroStep[] { new KeyTapStep(KeyboardKey.Z) }));
-    }
-
-    private static ApplicationSettings AssertLoaded(SettingsLoadResult result)
-    {
-        Assert.Equal(SettingsLoadStatus.Loaded, result.Status);
-        return Assert.IsType<ApplicationSettings>(result.Settings);
-    }
+            new KeyboardHotkey(HotkeyKey.F9),
+            new MacroSequence(new MacroStep[] { new KeyTapStep(KeyboardKey.Z) }))
+    });
 
     private sealed class NoOpKeyboardOutput : IKeyboardOutput
     {
-        public void KeyDown(KeyboardKey key)
-        {
-        }
+        public void KeyDown(KeyboardKey key) { }
+        public void KeyUp(KeyboardKey key) { }
+    }
 
-        public void KeyUp(KeyboardKey key)
-        {
-        }
+    private sealed class NoOpMouseOutput : IMouseOutput
+    {
+        public void ButtonDown(MouseButton button) { }
+        public void ButtonUp(MouseButton button) { }
     }
 
     private sealed class ImmediateDelay : IDelay
     {
         public Task WaitAsync(
             TimeSpan duration,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.CompletedTask;
-        }
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

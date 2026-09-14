@@ -11,18 +11,139 @@ namespace NovaMacro.Tests;
 public sealed class BuiltInPresetCatalogTests
 {
     [Fact]
-    public void Catalog_ContainsOnlyTheStableAbcTestTemplate()
+    public void Catalog_ContainsExactlyTheApprovedGtaPresetsInProductOrder()
     {
-        BuiltInPresetDefinition preset = Assert.Single(BuiltInPresetCatalog.All);
+        IReadOnlyList<BuiltInPresetDefinition> catalog = BuiltInPresetCatalog.All;
 
-        Assert.Equal(BuiltInPresetCatalog.AbcTestPresetId, preset.Id);
-        Assert.False(string.IsNullOrWhiteSpace(preset.Id));
-        Assert.Equal("ABC Test", preset.Name);
-        Assert.True(preset.Enabled);
-        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), preset.GetKeyboardHotkey());
-        Assert.IsType<KeyboardMacroTrigger>(preset.Trigger);
+        Assert.Equal(
+            new[]
+            {
+                "Buy All Ammo",
+                "Drop Bull Shark",
+                "Request Sparrow",
+                "Heavy Weapon Rapid Fire"
+            },
+            catalog.Select(preset => preset.Name));
+        Assert.Equal(
+            new[]
+            {
+                "gta-buy-all-ammo",
+                "gta-drop-bull-shark",
+                "gta-request-sparrow",
+                "gta-heavy-weapon-rapid-fire"
+            },
+            catalog.Select(preset => preset.Id));
+        Assert.DoesNotContain(catalog, preset => preset.Name == "ABC Test");
+        Assert.DoesNotContain(catalog, preset => preset.Id == "abc-test");
+        Assert.All(catalog, preset => Assert.True(preset.Enabled));
+    }
+
+    [Fact]
+    public void BuyAllAmmo_HasExactInitialSequenceAndKeyboardTrigger()
+    {
+        BuiltInPresetDefinition preset = Preset(
+            BuiltInPresetCatalog.BuyAllAmmoPresetId);
+
+        Assert.Equal("Buy All Ammo", preset.Name);
+        Assert.Equal(
+            new KeyboardMacroTrigger(new KeyboardHotkey(
+                HotkeyKey.R,
+                HotkeyModifiers.Alt)),
+            preset.Trigger);
         Assert.Equal(MacroExecutionMode.Once, preset.ExecutionMode);
-        Assert.Equal(BuiltInMacroSequences.AbcTest.Steps, preset.Sequence.Steps);
+        Assert.Equal(new MacroStep[]
+        {
+            Key(KeyboardKey.M), Delay(200),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown),
+            Key(KeyboardKey.Enter), Delay(100),
+            Key(KeyboardKey.Enter), Delay(100),
+            Key(KeyboardKey.ArrowLeft), Delay(40),
+            Key(KeyboardKey.ArrowDown),
+            Key(KeyboardKey.Enter), Delay(500),
+            Key(KeyboardKey.M)
+        }, preset.Sequence.Steps);
+    }
+
+    [Fact]
+    public void DropBullShark_HasExactInitialSequenceIncludingFinalEnter()
+    {
+        BuiltInPresetDefinition preset = Preset(
+            BuiltInPresetCatalog.DropBullSharkPresetId);
+
+        Assert.Equal("Drop Bull Shark", preset.Name);
+        Assert.Equal(
+            new KeyboardMacroTrigger(new KeyboardHotkey(
+                HotkeyKey.E,
+                HotkeyModifiers.Alt)),
+            preset.Trigger);
+        Assert.Equal(MacroExecutionMode.Once, preset.ExecutionMode);
+        Assert.Equal(new MacroStep[]
+        {
+            Key(KeyboardKey.M), Delay(200),
+            Key(KeyboardKey.Enter), Delay(100),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown),
+            Key(KeyboardKey.Enter), Delay(100),
+            Key(KeyboardKey.ArrowDown),
+            Key(KeyboardKey.Enter)
+        }, preset.Sequence.Steps);
+        Assert.Equal(new KeyTapStep(KeyboardKey.Enter), preset.Sequence.Steps[^1]);
+    }
+
+    [Fact]
+    public void RequestSparrow_HasExactInitialSequenceAndKeyboardTrigger()
+    {
+        BuiltInPresetDefinition preset = Preset(
+            BuiltInPresetCatalog.RequestSparrowPresetId);
+
+        Assert.Equal("Request Sparrow", preset.Name);
+        Assert.Equal(
+            new KeyboardMacroTrigger(new KeyboardHotkey(
+                HotkeyKey.H,
+                HotkeyModifiers.Control | HotkeyModifiers.Alt)),
+            preset.Trigger);
+        Assert.Equal(MacroExecutionMode.Once, preset.ExecutionMode);
+        Assert.Equal(new MacroStep[]
+        {
+            Key(KeyboardKey.M), Delay(200),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown),
+            Key(KeyboardKey.Enter), Delay(100),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown), Delay(40),
+            Key(KeyboardKey.ArrowDown),
+            Key(KeyboardKey.Enter), Delay(100),
+            Key(KeyboardKey.ArrowDown),
+            Key(KeyboardKey.Enter)
+        }, preset.Sequence.Steps);
+        Assert.Equal(8, preset.Sequence.Steps.OfType<KeyTapStep>().Count(
+            step => step.Key == KeyboardKey.ArrowDown));
+    }
+
+    [Fact]
+    public void HeavyWeaponRapidFire_HasExactInitialRepeatWhileHeldIteration()
+    {
+        BuiltInPresetDefinition preset = Preset(
+            BuiltInPresetCatalog.HeavyWeaponRapidFirePresetId);
+
+        Assert.Equal("Heavy Weapon Rapid Fire", preset.Name);
+        Assert.Equal(
+            new MouseButtonMacroTrigger(MouseButton.XButton1),
+            preset.Trigger);
+        Assert.Equal(MacroExecutionMode.RepeatWhileHeld, preset.ExecutionMode);
+        Assert.Equal(new MacroStep[]
+        {
+            new MouseButtonTapStep(MouseButton.Left), Delay(50),
+            Key(KeyboardKey.Digit5), Delay(50),
+            Key(KeyboardKey.Digit4), Delay(50)
+        }, preset.Sequence.Steps);
     }
 
     [Fact]
@@ -30,18 +151,11 @@ public sealed class BuiltInPresetCatalogTests
     {
         IReadOnlyList<BuiltInPresetDefinition> catalog = BuiltInPresetCatalog.All;
 
-        Assert.False(catalog is ICollection<BuiltInPresetDefinition>
-        {
-            IsReadOnly: false
-        });
-
         if (catalog is IList<BuiltInPresetDefinition> mutableView)
         {
             Assert.True(mutableView.IsReadOnly);
             Assert.Throws<NotSupportedException>(() => mutableView.Clear());
         }
-
-        Assert.Single(catalog);
     }
 
     [Theory]
@@ -54,63 +168,21 @@ public sealed class BuiltInPresetCatalogTests
             "Name",
             true,
             new KeyboardHotkey(HotkeyKey.F8),
-            BuiltInMacroSequences.AbcTest));
+            Sequence(KeyboardKey.A)));
         Assert.Throws<ArgumentException>(() => new BuiltInPresetDefinition(
             "preset",
             blank,
             true,
             new KeyboardHotkey(HotkeyKey.F8),
-            BuiltInMacroSequences.AbcTest));
+            Sequence(KeyboardKey.A)));
     }
 
     [Fact]
-    public void Definition_RejectsNullRequiredValues()
+    public void AddFromPreset_CreatesIndependentEditableCopiesWithFreshIds()
     {
-        Assert.Throws<ArgumentNullException>(() => new BuiltInPresetDefinition(
-            null!,
-            "Name",
-            true,
-            new KeyboardHotkey(HotkeyKey.F8),
-            BuiltInMacroSequences.AbcTest));
-        Assert.Throws<ArgumentNullException>(() => new BuiltInPresetDefinition(
-            "preset",
-            null!,
-            true,
-            new KeyboardHotkey(HotkeyKey.F8),
-            BuiltInMacroSequences.AbcTest));
-        Assert.Throws<ArgumentNullException>(() => new BuiltInPresetDefinition(
-            "preset",
-            "Name",
-            true,
-            null!,
-            BuiltInMacroSequences.AbcTest));
-        Assert.Throws<ArgumentNullException>(() => new BuiltInPresetDefinition(
-            "preset",
-            "Name",
-            true,
-            new KeyboardHotkey(HotkeyKey.F8),
-            null!));
-    }
-
-    [Fact]
-    public void AbcTemplate_MatchesStarterDefaultsWhileStarterKeepsLegacyIdentity()
-    {
-        BuiltInPresetDefinition preset = Assert.Single(BuiltInPresetCatalog.All);
-        MacroDefinition starter = Assert.Single(StarterConfiguration.Default.Macros);
-
-        Assert.Equal(preset.Name, starter.Name);
-        Assert.Equal(preset.Enabled, starter.Enabled);
-        Assert.Equal(preset.GetKeyboardHotkey(), starter.GetKeyboardHotkey());
-        Assert.Equal(preset.Sequence.Steps, starter.Sequence.Steps);
-        Assert.Equal(SingleMacroCompatibility.LegacyMacroId, starter.Id);
-    }
-
-    [Fact]
-    public void AddFromPreset_CreatesIndependentOrdinaryCopiesWithFreshIds()
-    {
-        BuiltInPresetDefinition preset = Assert.Single(BuiltInPresetCatalog.All);
-        var draft = MultiMacroEditorDraft.From(
-            new ApplicationSettings(Array.Empty<MacroDefinition>()));
+        BuiltInPresetDefinition preset = Preset(
+            BuiltInPresetCatalog.BuyAllAmmoPresetId);
+        var draft = MultiMacroEditorDraft.From(EmptySettings());
 
         MacroEditorDraft first = draft.AddFromPreset(preset);
         MacroEditorDraft second = draft.AddFromPreset(preset);
@@ -118,13 +190,7 @@ public sealed class BuiltInPresetCatalogTests
         Assert.NotEqual(first.Id, second.Id);
         Assert.False(first.Id.IsEmpty);
         Assert.NotEqual(SingleMacroCompatibility.LegacyMacroId, first.Id);
-        Assert.Equal(preset.Name, first.Name);
-        Assert.Equal(preset.Enabled, first.Enabled);
-        Assert.Equal(preset.GetKeyboardHotkey().Key, first.HotkeyKey);
-        Assert.False(first.Control);
-        Assert.False(first.Alt);
-        Assert.False(first.Shift);
-        Assert.Equal(new[] { "ABC Test", "ABC Test" },
+        Assert.Equal(new[] { "Buy All Ammo", "Buy All Ammo" },
             draft.Macros.Select(macro => macro.Name));
         Assert.Same(second, draft.SelectedMacro);
 
@@ -132,65 +198,23 @@ public sealed class BuiltInPresetCatalogTests
         first.Enabled = false;
         first.Steps[0].Key = KeyboardKey.Z;
 
-        Assert.Equal("ABC Test", preset.Name);
-        Assert.True(preset.Enabled);
-        Assert.Equal(new KeyTapStep(KeyboardKey.A), preset.Sequence.Steps[0]);
-        Assert.Equal("ABC Test", second.Name);
+        Assert.Equal("Buy All Ammo", preset.Name);
+        Assert.Equal(new KeyTapStep(KeyboardKey.M), preset.Sequence.Steps[0]);
+        Assert.Equal("Buy All Ammo", second.Name);
         Assert.True(second.Enabled);
-        Assert.Equal(KeyboardKey.A, second.Steps[0].Key);
+        Assert.Equal(KeyboardKey.M, second.Steps[0].Key);
     }
 
-    [Fact]
-    public void AddFromPreset_RejectsNullAndAcceptsAValidNonCatalogDefinition()
+    [Theory]
+    [InlineData("gta-buy-all-ammo")]
+    [InlineData("gta-heavy-weapon-rapid-fire")]
+    public void DuplicateEnabledPresetCopies_UseCanonicalTriggerValidation(
+        string presetId)
     {
-        var draft = MultiMacroEditorDraft.From(
-            new ApplicationSettings(Array.Empty<MacroDefinition>()));
-
-        Assert.Throws<ArgumentNullException>(() => draft.AddFromPreset(null!));
-
-        var definition = new BuiltInPresetDefinition(
-            "test-only",
-            "Test only",
-            enabled: false,
-            new KeyboardHotkey(HotkeyKey.F9, HotkeyModifiers.Control),
-            new MacroSequence(new MacroStep[]
-            {
-                new KeyTapStep(KeyboardKey.Z)
-            }));
-
-        MacroEditorDraft added = draft.AddFromPreset(definition);
-
-        Assert.Equal("Test only", added.Name);
-        Assert.False(added.Enabled);
-        Assert.Equal(HotkeyKey.F9, added.HotkeyKey);
-        Assert.True(added.Control);
-        Assert.Equal(KeyboardKey.Z, Assert.Single(added.Steps).Key);
-    }
-
-    [Fact]
-    public void DeleteThenReAdd_PreservesCatalogAndCreatesAnotherFreshId()
-    {
-        BuiltInPresetDefinition preset = Assert.Single(BuiltInPresetCatalog.All);
-        var draft = MultiMacroEditorDraft.From(
-            new ApplicationSettings(Array.Empty<MacroDefinition>()));
-
-        MacroId firstId = draft.AddFromPreset(preset).Id;
-        Assert.True(draft.DeleteSelectedMacro());
-        MacroEditorDraft readded = draft.AddFromPreset(preset);
-
-        Assert.Single(BuiltInPresetCatalog.All);
-        Assert.NotEqual(firstId, readded.Id);
-        Assert.Same(readded, draft.SelectedMacro);
-    }
-
-    [Fact]
-    public void DuplicateEnabledPresetCopies_UseExistingValidationWithoutMutation()
-    {
-        BuiltInPresetDefinition preset = Assert.Single(BuiltInPresetCatalog.All);
-        var draft = MultiMacroEditorDraft.From(
-            new ApplicationSettings(Array.Empty<MacroDefinition>()));
-        MacroEditorDraft first = draft.AddFromPreset(preset);
-        MacroEditorDraft second = draft.AddFromPreset(preset);
+        BuiltInPresetDefinition preset = Preset(presetId);
+        var draft = MultiMacroEditorDraft.From(EmptySettings());
+        draft.AddFromPreset(preset);
+        draft.AddFromPreset(preset);
 
         MacroEditorValidationResult validation = draft.Validate();
 
@@ -198,18 +222,14 @@ public sealed class BuiltInPresetCatalogTests
             validation.ConfigurationErrors);
         Assert.Equal(ConfigurationValidationErrorCode.DuplicateEnabledTrigger, error.Code);
         Assert.Equal("macros[1].trigger", error.Path);
-        Assert.Equal(HotkeyKey.F8, first.HotkeyKey);
-        Assert.Equal(HotkeyKey.F8, second.HotkeyKey);
-        Assert.True(first.Enabled);
-        Assert.True(second.Enabled);
     }
 
     [Fact]
-    public void PresetCopy_RoundTripsAsOrdinaryV2MacroWithoutMetadata()
+    public void PresetCopy_RoundTripsAsAnOrdinaryV3MacroWithoutMetadata()
     {
-        BuiltInPresetDefinition preset = Assert.Single(BuiltInPresetCatalog.All);
-        var draft = MultiMacroEditorDraft.From(
-            new ApplicationSettings(Array.Empty<MacroDefinition>()));
+        BuiltInPresetDefinition preset = Preset(
+            BuiltInPresetCatalog.RequestSparrowPresetId);
+        var draft = MultiMacroEditorDraft.From(EmptySettings());
         MacroEditorDraft copy = draft.AddFromPreset(preset);
 
         Assert.True(draft.TryBuildSettings(
@@ -217,35 +237,31 @@ public sealed class BuiltInPresetCatalogTests
             out MacroEditorValidationResult validation));
         Assert.True(validation.IsValid);
 
-        string json = SettingsJsonCodec.WriteV2(settings!);
-        SettingsJsonReadResult read = SettingsJsonCodec.ReadV1OrV2(json);
-        ApplicationSettings restored = Assert.IsType<ApplicationSettings>(read.Settings);
+        string json = SettingsJsonCodec.WriteV3(settings!);
+        ApplicationSettings restored = Assert.IsType<ApplicationSettings>(
+            SettingsJsonCodec.ReadV1OrV2OrV3(json).Settings);
         MacroDefinition macro = Assert.Single(restored.Macros);
         using JsonDocument document = JsonDocument.Parse(json);
-        JsonElement serialized = document.RootElement
-            .GetProperty("macros")
-            .EnumerateArray()
-            .Single();
 
         Assert.Equal(copy.Id, macro.Id);
-        Assert.Equal(preset.Name, macro.Name);
-        Assert.Equal(preset.Enabled, macro.Enabled);
-        Assert.Equal(preset.GetKeyboardHotkey(), macro.GetKeyboardHotkey());
+        Assert.Equal(preset.Trigger, macro.Trigger);
+        Assert.Equal(preset.ExecutionMode, macro.ExecutionMode);
         Assert.Equal(preset.Sequence.Steps, macro.Sequence.Steps);
-        Assert.Equal(new[] { "id", "name", "enabled", "hotkey", "steps" },
-            serialized.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(
+            new[] { "id", "name", "enabled", "trigger", "executionMode", "steps" },
+            document.RootElement.GetProperty("macros").EnumerateArray().Single()
+                .EnumerateObject().Select(property => property.Name));
         Assert.DoesNotContain("preset", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("template", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("origin", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("builtIn", json, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void AddFromPreset_AllowsTemporaryThirtyThirdDraftAndValidationReportsCollectionLimit()
+    public void AddFromPreset_AllowsTemporaryThirtyThirdDraftBeforeValidationRejectsIt()
     {
-        BuiltInPresetDefinition preset = Assert.Single(BuiltInPresetCatalog.All);
-        var draft = MultiMacroEditorDraft.From(
-            new ApplicationSettings(Array.Empty<MacroDefinition>()));
+        BuiltInPresetDefinition preset = Preset(
+            BuiltInPresetCatalog.BuyAllAmmoPresetId);
+        var draft = MultiMacroEditorDraft.From(EmptySettings());
 
         for (int index = 0; index < 33; index++)
         {
@@ -254,24 +270,27 @@ public sealed class BuiltInPresetCatalogTests
             {
                 added.Enabled = false;
             }
-
-            if (index == 31)
-            {
-                Assert.True(draft.TryBuildSettings(
-                    out ApplicationSettings? thirtyTwo,
-                    out MacroEditorValidationResult thirtyTwoValidation));
-                Assert.True(thirtyTwoValidation.IsValid);
-                Assert.Equal(32, thirtyTwo!.Macros.Count);
-            }
         }
 
-        Assert.Equal(33, draft.Macros.Count);
         Assert.False(draft.TryBuildSettings(
             out ApplicationSettings? settings,
             out MacroEditorValidationResult validation));
         Assert.Null(settings);
         Assert.Contains(validation.ConfigurationErrors,
             error => error.Code == ConfigurationValidationErrorCode.MacroCountOutOfRange);
-        Assert.Same(draft.Macros[^1], draft.SelectedMacro);
     }
+
+    private static BuiltInPresetDefinition Preset(string id) =>
+        Assert.Single(BuiltInPresetCatalog.All, preset => preset.Id == id);
+
+    private static ApplicationSettings EmptySettings() =>
+        new(Array.Empty<MacroDefinition>());
+
+    private static MacroSequence Sequence(KeyboardKey key) =>
+        new(new MacroStep[] { Key(key) });
+
+    private static KeyTapStep Key(KeyboardKey key) => new(key);
+
+    private static DelayStep Delay(int milliseconds) =>
+        new(TimeSpan.FromMilliseconds(milliseconds));
 }

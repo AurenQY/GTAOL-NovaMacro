@@ -391,7 +391,22 @@ public sealed class MacroEditorSaveCoordinatorTests
 
     private static MultiMacroEditorDraft CreateDraft()
     {
-        return MultiMacroEditorDraft.From(StarterConfiguration.Default);
+        return MultiMacroEditorDraft.From(new ApplicationSettings(new[]
+        {
+            new MacroDefinition(
+                SingleMacroCompatibility.LegacyMacroId,
+                "ABC Test",
+                enabled: true,
+                new KeyboardHotkey(HotkeyKey.F8),
+                new MacroSequence(new MacroStep[]
+                {
+                    new KeyTapStep(KeyboardKey.A),
+                    new DelayStep(TimeSpan.FromMilliseconds(150)),
+                    new KeyTapStep(KeyboardKey.B),
+                    new DelayStep(TimeSpan.FromMilliseconds(150)),
+                    new KeyTapStep(KeyboardKey.C)
+                }))
+        }));
     }
 
     private static MacroDefinition CreateMacro(

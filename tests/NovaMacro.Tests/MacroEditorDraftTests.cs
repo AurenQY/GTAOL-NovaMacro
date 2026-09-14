@@ -9,7 +9,7 @@ namespace NovaMacro.Tests;
 public sealed class MacroEditorDraftTests
 {
     [Fact]
-    public void FromStarter_MapsExactEditableStateAndBoundaryMetadata()
+    public void FromSampleMacro_MapsExactEditableStateAndBoundaryMetadata()
     {
         MacroEditorDraft draft = CreateDraft();
 
@@ -32,10 +32,10 @@ public sealed class MacroEditorDraftTests
     }
 
     [Fact]
-    public void MutatingDraft_DoesNotMutateStarterConfiguration()
+    public void MutatingDraft_DoesNotMutateSourceMacro()
     {
-        ApplicationSettings starter = StarterConfiguration.Default;
-        MacroEditorDraft draft = MacroEditorDraft.From(AssertSingleMacro(starter));
+        MacroDefinition source = CreateSampleMacro();
+        MacroEditorDraft draft = MacroEditorDraft.From(source);
 
         draft.Name = "Changed";
         draft.HotkeyKey = HotkeyKey.F9;
@@ -46,11 +46,10 @@ public sealed class MacroEditorDraftTests
         draft.Remove(draft.Steps[^1]);
         draft.AddDelay();
 
-        MacroDefinition starterMacro = AssertSingleMacro(starter);
-        Assert.Equal("ABC Test", starterMacro.Name);
-        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), starterMacro.GetKeyboardHotkey());
+        Assert.Equal("ABC Test", source.Name);
+        Assert.Equal(new KeyboardHotkey(HotkeyKey.F8), source.GetKeyboardHotkey());
         Assert.Collection(
-            starterMacro.Sequence.Steps,
+            source.Sequence.Steps,
             step => Assert.Equal(new KeyTapStep(KeyboardKey.A), step),
             step => Assert.Equal(
                 new DelayStep(TimeSpan.FromMilliseconds(150)),
@@ -579,9 +578,22 @@ public sealed class MacroEditorDraftTests
 
     private static MacroEditorDraft CreateDraft()
     {
-        return MacroEditorDraft.From(
-            AssertSingleMacro(StarterConfiguration.Default));
+        return MacroEditorDraft.From(CreateSampleMacro());
     }
+
+    private static MacroDefinition CreateSampleMacro() => new(
+        SingleMacroCompatibility.LegacyMacroId,
+        "ABC Test",
+        enabled: true,
+        new KeyboardHotkey(HotkeyKey.F8),
+        new MacroSequence(new MacroStep[]
+        {
+            new KeyTapStep(KeyboardKey.A),
+            new DelayStep(TimeSpan.FromMilliseconds(150)),
+            new KeyTapStep(KeyboardKey.B),
+            new DelayStep(TimeSpan.FromMilliseconds(150)),
+            new KeyTapStep(KeyboardKey.C)
+        }));
 
     private static ApplicationSettingsCandidate AssertCandidate(
         MacroEditorDraft draft)

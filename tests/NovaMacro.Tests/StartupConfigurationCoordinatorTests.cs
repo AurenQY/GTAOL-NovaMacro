@@ -1,6 +1,7 @@
 using NovaMacro.App.Configuration;
 using NovaMacro.App.Configuration.Json;
 using NovaMacro.App.Configuration.Storage;
+using NovaMacro.App.Presets;
 using NovaMacro.App.Startup;
 using NovaMacro.Core;
 using NovaMacro.Windows;
@@ -27,7 +28,6 @@ public sealed class StartupConfigurationCoordinatorTests
         StartupConfigurationResult result = coordinator.Resolve();
 
         Assert.Equal(StartupConfigurationStatus.StarterReady, result.Status);
-        Assert.Same(StarterConfiguration.Default, result.InitialEditorSettings);
         Assert.Same(result.InitialEditorSettings, result.RuntimeSettings);
         Assert.Equal(store.SettingsPath, result.SettingsPath);
         Assert.Null(result.JsonReadResult);
@@ -243,7 +243,7 @@ public sealed class StartupConfigurationCoordinatorTests
             new StartupConfigurationCoordinator(unavailableStore).Resolve();
 
         Assert.NotNull(missing.RuntimeSettings);
-        Assert.Same(StarterConfiguration.Default, missing.RuntimeSettings);
+        AssertStarterSemantics(missing.RuntimeSettings!);
         Assert.Null(invalid.RuntimeSettings);
         Assert.Null(unavailable.RuntimeSettings);
         AssertStoreCalls(missingStore);
@@ -275,48 +275,25 @@ public sealed class StartupConfigurationCoordinatorTests
 
     private static void AssertStarterSemantics(ApplicationSettings settings)
     {
-        MacroDefinition macro = Assert.Single(settings.Macros);
-        Assert.Equal("ABC Test", macro.Name);
-        Assert.Equal(
-            new KeyboardHotkey(HotkeyKey.F8),
-            macro.GetKeyboardHotkey());
-        Assert.Collection(
-            macro.Sequence.Steps,
-            step => Assert.Equal(new KeyTapStep(KeyboardKey.A), step),
-            step => Assert.Equal(
-                new DelayStep(TimeSpan.FromMilliseconds(150)),
-                step),
-            step => Assert.Equal(new KeyTapStep(KeyboardKey.B), step),
-            step => Assert.Equal(
-                new DelayStep(TimeSpan.FromMilliseconds(150)),
-                step),
-            step => Assert.Equal(new KeyTapStep(KeyboardKey.C), step));
+        Assert.Equal(BuiltInPresetCatalog.All.Select(preset => preset.Name),
+            settings.Macros.Select(macro => macro.Name));
+        Assert.Equal(BuiltInPresetCatalog.All.Select(preset => preset.Trigger),
+            settings.Macros.Select(macro => macro.Trigger));
+        Assert.Equal(BuiltInPresetCatalog.All.Select(preset => preset.ExecutionMode),
+            settings.Macros.Select(macro => macro.ExecutionMode));
+        Assert.Equal(BuiltInPresetCatalog.All.Select(preset => preset.Sequence.Steps),
+            settings.Macros.Select(macro => macro.Sequence.Steps));
+        Assert.All(settings.Macros, macro => Assert.True(macro.Enabled));
+        Assert.All(settings.Macros, macro =>
+            Assert.NotEqual(SingleMacroCompatibility.LegacyMacroId, macro.Id));
     }
 
     private static void AssertRecoveryStarter(
         StartupConfigurationResult result)
     {
-        Assert.Same(StarterConfiguration.Default, result.InitialEditorSettings);
         Assert.Null(result.RuntimeSettings);
 
-        ApplicationSettings starter = result.InitialEditorSettings;
-        MacroDefinition macro = Assert.Single(starter.Macros);
-        ConfigurationValidationResult validation =
-            ConfigurationValidator.Validate(
-                new ApplicationSettingsCandidate(
-                    new MacroDefinitionCandidate?[]
-                    {
-                        new(
-                            macro.Id,
-                            macro.Name,
-                            macro.Enabled,
-                            macro.GetKeyboardHotkey(),
-                            macro.Sequence)
-                    }));
-
-        Assert.True(validation.IsValid);
-        Assert.NotNull(validation.Settings);
-        Assert.Empty(validation.Errors);
+        Assert.Empty(result.InitialEditorSettings.Macros);
     }
 
     private static void AssertStoreCalls(RecordingSettingsStore store)

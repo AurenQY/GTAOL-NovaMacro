@@ -273,7 +273,7 @@ public sealed class MainWindowMultiIntegrationTests
             StartupConfigurationResult startup = Resolve(store);
             var window = new MainWindow(new MacroEditorSaveCoordinator(store), startup);
             using var native = new FakeGlobalHotkeyNativeApi();
-            native.FailRegisterCall(2, nativeErrorCode: 1409);
+            native.FailRegisterCall(2, nativeErrorCode: 87);
             var scheduler = new FakeHotkeyTriggerWorkScheduler();
             var service = new WindowsGlobalHotkeyService(native, scheduler);
             using var runtime = new MultiMacroHotkeyCoordinator(
@@ -323,8 +323,8 @@ public sealed class MainWindowMultiIntegrationTests
             StartupConfigurationResult startup = Resolve(store);
             var window = new MainWindow(new MacroEditorSaveCoordinator(store), startup);
             using var native = new FakeGlobalHotkeyNativeApi();
-            native.FailRegisterCall(1, nativeErrorCode: 1409);
-            native.FailRegisterCall(2, nativeErrorCode: 1409);
+            native.FailRegisterCall(1, nativeErrorCode: 87);
+            native.FailRegisterCall(2, nativeErrorCode: 87);
             var scheduler = new FakeHotkeyTriggerWorkScheduler();
             var service = new WindowsGlobalHotkeyService(native, scheduler);
             using var runtime = new MultiMacroHotkeyCoordinator(

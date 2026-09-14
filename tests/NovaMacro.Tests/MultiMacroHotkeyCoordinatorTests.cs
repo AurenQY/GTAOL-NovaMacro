@@ -132,7 +132,7 @@ public sealed class MultiMacroHotkeyCoordinatorTests
     [Fact]
     public void Start_OrdinaryRegistrationFailureIsIsolatedAndLaterMacrosActivate()
     {
-        const int expectedErrorCode = 1409;
+        const int expectedErrorCode = 87;
         using var native = new FakeGlobalHotkeyNativeApi();
         native.FailRegisterCall(2, expectedErrorCode);
         var scheduler = new FakeHotkeyTriggerWorkScheduler();
@@ -171,9 +171,9 @@ public sealed class MultiMacroHotkeyCoordinatorTests
     public async Task Start_WhenAllOrdinaryRegistrationsFailRemainsAvailableForCleanShutdown()
     {
         using var native = new FakeGlobalHotkeyNativeApi();
-        native.FailRegisterCall(1, 1409);
-        native.FailRegisterCall(2, 1409);
-        native.FailRegisterCall(3, 1409);
+        native.FailRegisterCall(1, 87);
+        native.FailRegisterCall(2, 87);
+        native.FailRegisterCall(3, 87);
         var scheduler = new FakeHotkeyTriggerWorkScheduler();
         var service = new WindowsGlobalHotkeyService(native, scheduler);
         using var coordinator = Coordinator(

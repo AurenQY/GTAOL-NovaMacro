@@ -7,6 +7,8 @@ namespace NovaMacro.App;
 
 internal sealed class MultiMacroHotkeyCoordinator : IDisposable
 {
+    private const int ErrorHotkeyAlreadyRegistered = 1409;
+
     private readonly object _gate = new();
     private readonly object _notificationGate = new();
     private readonly MacroDefinition[] _macros;
@@ -19,6 +21,8 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
     private readonly Func<WindowsGlobalHotkeyService> _hotkeyServiceFactory;
     private readonly Func<WindowsGlobalMouseButtonService>
         _mouseButtonServiceFactory;
+    private readonly Func<WindowsGlobalKeyboardFallbackService>
+        _keyboardFallbackServiceFactory;
     private readonly MacroRunner _macroRunner;
     private readonly Action? _terminalPhase1CompletedForTesting;
     private readonly Action? _executionOwnerReleasedForTesting;
@@ -28,14 +32,20 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
     private readonly List<GlobalHotkeyRegistration> _registrations = new();
     private readonly List<GlobalMouseButtonRegistration>
         _mouseRegistrations = new();
+    private readonly List<GlobalKeyboardFallbackRegistration>
+        _keyboardFallbackRegistrations = new();
+    private readonly HashSet<MacroId> _nativeKeyboardBindingIds = new();
+    private readonly HashSet<MacroId> _fallbackKeyboardBindingIds = new();
     private readonly HashSet<ExecutionMarker> _executions = new();
 
     private CoordinatorState _state = CoordinatorState.Created;
     private WindowsGlobalHotkeyService? _hotkeyService;
     private WindowsGlobalMouseButtonService? _mouseButtonService;
+    private WindowsGlobalKeyboardFallbackService? _keyboardFallbackService;
     private MultiMacroRuntimeStatus? _currentStatus;
     private bool _subscribed;
     private bool _mouseSubscribed;
+    private bool _keyboardFallbackSubscribed;
     private bool _executionAllowed;
     private bool _notificationsAllowed = true;
     private ExecutionMarker? _executionOwner;
@@ -48,7 +58,9 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
         MacroRunner macroRunner,
         Action? terminalPhase1CompletedForTesting = null,
         Func<WindowsGlobalMouseButtonService>? mouseButtonServiceFactory = null,
-        Action? executionOwnerReleasedForTesting = null)
+        Action? executionOwnerReleasedForTesting = null,
+        Func<WindowsGlobalKeyboardFallbackService>?
+            keyboardFallbackServiceFactory = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(hotkeyServiceFactory);
@@ -58,6 +70,8 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
         _hotkeyServiceFactory = hotkeyServiceFactory;
         _mouseButtonServiceFactory = mouseButtonServiceFactory ??
             (() => new WindowsGlobalMouseButtonService());
+        _keyboardFallbackServiceFactory = keyboardFallbackServiceFactory ??
+            (() => new WindowsGlobalKeyboardFallbackService());
         _macroRunner = macroRunner;
         _terminalPhase1CompletedForTesting =
             terminalPhase1CompletedForTesting;
@@ -203,8 +217,10 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
     {
         GlobalHotkeyRegistration[] registrations;
         GlobalMouseButtonRegistration[] mouseRegistrations;
+        GlobalKeyboardFallbackRegistration[] keyboardFallbackRegistrations;
         WindowsGlobalHotkeyService? hotkeyService;
         WindowsGlobalMouseButtonService? mouseButtonService;
+        WindowsGlobalKeyboardFallbackService? keyboardFallbackService;
         Task[] executionTasks;
 
         lock (_notificationGate)
@@ -227,14 +243,22 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
                 _state = CoordinatorState.Disposing;
                 UnsubscribeFromHotkeyService();
                 UnsubscribeFromMouseButtonService();
+                UnsubscribeFromKeyboardFallbackService();
                 registrations = _registrations.ToArray();
                 _registrations.Clear();
                 mouseRegistrations = _mouseRegistrations.ToArray();
                 _mouseRegistrations.Clear();
+                keyboardFallbackRegistrations =
+                    _keyboardFallbackRegistrations.ToArray();
+                _keyboardFallbackRegistrations.Clear();
+                _nativeKeyboardBindingIds.Clear();
+                _fallbackKeyboardBindingIds.Clear();
                 hotkeyService = _hotkeyService;
                 _hotkeyService = null;
                 mouseButtonService = _mouseButtonService;
                 _mouseButtonService = null;
+                keyboardFallbackService = _keyboardFallbackService;
+                _keyboardFallbackService = null;
                 executionTasks = _executions
                     .Select(execution => execution.Completion.Task)
                     .ToArray();
@@ -253,6 +277,7 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
 
             DisposeRegistrations(registrations, failures);
             DisposeRegistrations(mouseRegistrations, failures);
+            DisposeRegistrations(keyboardFallbackRegistrations, failures);
 
             if (hotkeyService is not null)
             {
@@ -262,6 +287,11 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
             if (mouseButtonService is not null)
             {
                 TryDispose(mouseButtonService, failures);
+            }
+
+            if (keyboardFallbackService is not null)
+            {
+                TryDispose(keyboardFallbackService, failures);
             }
 
             try
@@ -308,28 +338,7 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
 
             foreach (RuntimeMacroBinding binding in _enabledBindings)
             {
-                try
-                {
-                    GlobalHotkeyRegistration registration =
-                        hotkeyService.Register(
-                            ((KeyboardMacroTrigger)binding.Trigger).Hotkey);
-
-                    lock (_gate)
-                    {
-                        _registrations.Add(registration);
-                    }
-
-                    statuses[_macroIndexes[binding.Id]] = new RuntimeMacroStatus(
-                        binding.Id,
-                        RuntimeMacroState.Active);
-                }
-                catch (GlobalHotkeyRegistrationException exception)
-                {
-                    statuses[_macroIndexes[binding.Id]] = new RuntimeMacroStatus(
-                        binding.Id,
-                        RuntimeMacroState.RegistrationFailed,
-                        exception.Message);
-                }
+                ActivateKeyboardBinding(hotkeyService, binding, statuses);
             }
 
             MultiMacroRuntimeState aggregateState =
@@ -383,28 +392,11 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
 
             _ = ObserveBackendCompletionAsync(
                 service.MessageLoopCompletion,
-                isMouseBackend: false);
+                TriggerBackend.NativeKeyboard);
 
-            foreach ((KeyboardHotkey hotkey, RuntimeMacroBinding binding) in
-                _bindingsByHotkey)
+            foreach (RuntimeMacroBinding binding in _bindingsByHotkey.Values)
             {
-                try
-                {
-                    GlobalHotkeyRegistration registration = service.Register(hotkey);
-                    lock (_gate)
-                    {
-                        _registrations.Add(registration);
-                    }
-                    statuses[_macroIndexes[binding.Id]] = new RuntimeMacroStatus(
-                        binding.Id, RuntimeMacroState.Active);
-                }
-                catch (GlobalHotkeyRegistrationException exception)
-                {
-                    statuses[_macroIndexes[binding.Id]] = new RuntimeMacroStatus(
-                        binding.Id,
-                        RuntimeMacroState.RegistrationFailed,
-                        exception.Message);
-                }
+                ActivateKeyboardBinding(service, binding, statuses);
             }
         }
         catch (Exception exception)
@@ -417,6 +409,95 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
                     exception.Message);
             }
         }
+    }
+
+    private void ActivateKeyboardBinding(
+        WindowsGlobalHotkeyService nativeService,
+        RuntimeMacroBinding binding,
+        RuntimeMacroStatus[] statuses)
+    {
+        KeyboardHotkey hotkey =
+            ((KeyboardMacroTrigger)binding.Trigger).Hotkey;
+
+        try
+        {
+            GlobalHotkeyRegistration registration = nativeService.Register(hotkey);
+            lock (_gate)
+            {
+                _registrations.Add(registration);
+                _nativeKeyboardBindingIds.Add(binding.Id);
+            }
+            statuses[_macroIndexes[binding.Id]] = new RuntimeMacroStatus(
+                binding.Id,
+                RuntimeMacroState.Active);
+        }
+        catch (GlobalHotkeyRegistrationException exception)
+            when (exception.NativeErrorCode == ErrorHotkeyAlreadyRegistered)
+        {
+            ActivateKeyboardFallback(binding, hotkey, exception, statuses);
+        }
+        catch (GlobalHotkeyRegistrationException exception)
+        {
+            statuses[_macroIndexes[binding.Id]] = new RuntimeMacroStatus(
+                binding.Id,
+                RuntimeMacroState.RegistrationFailed,
+                exception.Message);
+        }
+    }
+
+    private void ActivateKeyboardFallback(
+        RuntimeMacroBinding binding,
+        KeyboardHotkey hotkey,
+        GlobalHotkeyRegistrationException collision,
+        RuntimeMacroStatus[] statuses)
+    {
+        try
+        {
+            WindowsGlobalKeyboardFallbackService service =
+                GetOrCreateKeyboardFallbackService();
+            GlobalKeyboardFallbackRegistration registration =
+                service.Register(hotkey);
+            lock (_gate)
+            {
+                _keyboardFallbackRegistrations.Add(registration);
+                _fallbackKeyboardBindingIds.Add(binding.Id);
+            }
+            statuses[_macroIndexes[binding.Id]] = new RuntimeMacroStatus(
+                binding.Id,
+                RuntimeMacroState.Active);
+        }
+        catch (Exception fallbackFailure)
+        {
+            statuses[_macroIndexes[binding.Id]] = new RuntimeMacroStatus(
+                binding.Id,
+                RuntimeMacroState.RegistrationFailed,
+                $"{collision.Message} Keyboard fallback also failed: " +
+                fallbackFailure.Message);
+        }
+    }
+
+    private WindowsGlobalKeyboardFallbackService
+        GetOrCreateKeyboardFallbackService()
+    {
+        if (_keyboardFallbackService is { } existing)
+        {
+            return existing;
+        }
+
+        WindowsGlobalKeyboardFallbackService service =
+            _keyboardFallbackServiceFactory() ??
+            throw new InvalidOperationException(
+                "The keyboard fallback service factory returned null.");
+        lock (_gate)
+        {
+            _keyboardFallbackService = service;
+            SubscribeToKeyboardFallbackService(service);
+        }
+
+        _ = ObserveBackendCompletionAsync(
+            service.MessageLoopCompletion,
+            TriggerBackend.KeyboardFallback);
+        return service;
     }
 
     private void ActivateMouseBackend(RuntimeMacroStatus[] statuses)
@@ -435,7 +516,7 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
 
             _ = ObserveBackendCompletionAsync(
                 service.MessageLoopCompletion,
-                isMouseBackend: true);
+                TriggerBackend.Mouse);
 
             foreach ((MouseButton button, RuntimeMacroBinding binding) in
                 _bindingsByMouseButton)
@@ -474,7 +555,7 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
 
     private async Task ObserveBackendCompletionAsync(
         Task<Exception?> completion,
-        bool isMouseBackend)
+        TriggerBackend backend)
     {
         await Task.Yield();
         Exception? failure;
@@ -494,6 +575,13 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
 
         await _activationCompleted.Task.ConfigureAwait(false);
 
+        HandleBackendFailure(failure, backend);
+    }
+
+    private void HandleBackendFailure(
+        Exception failure,
+        TriggerBackend backend)
+    {
         MultiMacroRuntimeStatus snapshot;
         ExecutionMarker[] executionsToCancel;
         lock (_gate)
@@ -503,12 +591,17 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
                 return;
             }
 
-            IEnumerable<RuntimeMacroBinding> affected = isMouseBackend
-                ? _bindingsByMouseButton.Values
-                : _bindingsByHotkey.Values;
-            HashSet<MacroId> affectedIds = affected
-                .Select(binding => binding.Id)
-                .ToHashSet();
+            HashSet<MacroId> affectedIds = backend switch
+            {
+                TriggerBackend.Mouse => _bindingsByMouseButton.Values
+                    .Select(binding => binding.Id)
+                    .ToHashSet(),
+                TriggerBackend.NativeKeyboard =>
+                    _nativeKeyboardBindingIds.ToHashSet(),
+                TriggerBackend.KeyboardFallback =>
+                    _fallbackKeyboardBindingIds.ToHashSet(),
+                _ => throw new ArgumentOutOfRangeException(nameof(backend))
+            };
             RuntimeMacroStatus[] statuses = _currentStatus!.Macros
                 .Select(status => affectedIds.Contains(status.Id) &&
                         status.State == RuntimeMacroState.Active
@@ -519,23 +612,29 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
                     : status)
                 .ToArray();
 
-            if (isMouseBackend)
+            if (backend == TriggerBackend.Mouse)
             {
                 UnsubscribeFromMouseButtonService();
                 _mouseRegistrations.Clear();
                 _mouseButtonService = null;
             }
-            else
+            else if (backend == TriggerBackend.NativeKeyboard)
             {
                 UnsubscribeFromHotkeyService();
                 _registrations.Clear();
+                _nativeKeyboardBindingIds.Clear();
                 _hotkeyService = null;
+            }
+            else
+            {
+                UnsubscribeFromKeyboardFallbackService();
+                _keyboardFallbackRegistrations.Clear();
+                _fallbackKeyboardBindingIds.Clear();
+                _keyboardFallbackService = null;
             }
 
             executionsToCancel = _executions
-                .Where(item => isMouseBackend
-                    ? item.Binding.Trigger is MouseButtonMacroTrigger
-                    : item.Binding.Trigger is KeyboardMacroTrigger)
+                .Where(item => affectedIds.Contains(item.Binding.Id))
                 .ToArray();
 
             MultiMacroRuntimeState aggregate = DetermineAggregateState(statuses);
@@ -563,17 +662,27 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
     {
         var failures = new List<Exception> { activationFailure };
         GlobalHotkeyRegistration[] registrations;
+        GlobalKeyboardFallbackRegistration[] keyboardFallbackRegistrations;
         WindowsGlobalHotkeyService? hotkeyService;
+        WindowsGlobalKeyboardFallbackService? keyboardFallbackService;
 
         lock (_gate)
         {
             _executionAllowed = false;
             _state = CoordinatorState.ServiceUnavailableTransitioning;
             UnsubscribeFromHotkeyService();
+            UnsubscribeFromKeyboardFallbackService();
             registrations = _registrations.ToArray();
             _registrations.Clear();
+            keyboardFallbackRegistrations =
+                _keyboardFallbackRegistrations.ToArray();
+            _keyboardFallbackRegistrations.Clear();
+            _nativeKeyboardBindingIds.Clear();
+            _fallbackKeyboardBindingIds.Clear();
             hotkeyService = _hotkeyService;
             _hotkeyService = null;
+            keyboardFallbackService = _keyboardFallbackService;
+            _keyboardFallbackService = null;
         }
 
         Exception? cancellationFailure = RequestExecutionCancellation();
@@ -583,10 +692,16 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
         }
 
         DisposeRegistrations(registrations, failures);
+        DisposeRegistrations(keyboardFallbackRegistrations, failures);
 
         if (hotkeyService is not null)
         {
             TryDispose(hotkeyService, failures);
+        }
+
+        if (keyboardFallbackService is not null)
+        {
+            TryDispose(keyboardFallbackService, failures);
         }
 
         Exception failure = failures.Count == 1
@@ -627,6 +742,10 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
             return;
         }
 
+        HashSet<MacroId>? affectedIds = null;
+        MultiMacroRuntimeStatus? preparedStatus = null;
+        bool useSharedBackendTransition;
+
         lock (_notificationGate)
         {
             lock (_gate)
@@ -640,32 +759,81 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
                     return;
                 }
 
-                UnsubscribeFromHotkeyService();
-                _registrations.Clear();
-                _executionAllowed = false;
-                _state = CoordinatorState.ServiceUnavailableTransitioning;
+                useSharedBackendTransition =
+                    _keyboardFallbackService is not null;
+                if (!useSharedBackendTransition)
+                {
+                    UnsubscribeFromHotkeyService();
+                    _registrations.Clear();
+                    affectedIds = _nativeKeyboardBindingIds.ToHashSet();
+                    _nativeKeyboardBindingIds.Clear();
+                    _state = CoordinatorState.ServiceUnavailableTransitioning;
+
+                    RuntimeMacroStatus[] statuses = _currentStatus!.Macros
+                        .Select(status => affectedIds.Contains(status.Id) &&
+                                status.State == RuntimeMacroState.Active
+                            ? new RuntimeMacroStatus(
+                                status.Id,
+                                RuntimeMacroState.RuntimeUnavailable,
+                                failure.Message)
+                            : status)
+                        .ToArray();
+                    MultiMacroRuntimeState aggregate =
+                        DetermineAggregateState(statuses);
+                    if (!statuses.Any(
+                            status => status.State == RuntimeMacroState.Active))
+                    {
+                        aggregate = MultiMacroRuntimeState.ServiceUnavailable;
+                        _executionAllowed = false;
+                    }
+
+                    preparedStatus = new MultiMacroRuntimeStatus(
+                        aggregate,
+                        statuses);
+                }
             }
 
-            _terminalPhase1CompletedForTesting?.Invoke();
-            _ = RequestExecutionCancellation();
-
-            MultiMacroRuntimeStatus snapshot;
-
-            lock (_gate)
+            if (!useSharedBackendTransition)
             {
-                if (_state != CoordinatorState.ServiceUnavailableTransitioning)
+                _terminalPhase1CompletedForTesting?.Invoke();
+                ExecutionMarker[] executionsToCancel;
+                lock (_gate)
                 {
-                    return;
+                    executionsToCancel = _executions
+                        .Where(item => affectedIds!.Contains(item.Binding.Id))
+                        .ToArray();
+                }
+                foreach (ExecutionMarker execution in executionsToCancel)
+                {
+                    execution.Cancel();
                 }
 
-                _state = CoordinatorState.ServiceUnavailable;
-                snapshot = new MultiMacroRuntimeStatus(
-                    MultiMacroRuntimeState.ServiceUnavailable,
-                    CreateUnavailableStatuses(failure.Message));
-                _currentStatus = snapshot;
-            }
+                MultiMacroRuntimeStatus snapshot;
 
-            PublishStatusChanged(snapshot);
+                lock (_gate)
+                {
+                    if (_state !=
+                        CoordinatorState.ServiceUnavailableTransitioning)
+                    {
+                        return;
+                    }
+
+                    snapshot = preparedStatus!;
+                    _state = snapshot.State ==
+                            MultiMacroRuntimeState.ServiceUnavailable
+                        ? CoordinatorState.ServiceUnavailable
+                        : CoordinatorState.Active;
+                    _currentStatus = snapshot;
+                }
+
+                PublishStatusChanged(snapshot);
+            }
+        }
+
+        if (useSharedBackendTransition)
+        {
+            await _activationCompleted.Task.ConfigureAwait(false);
+            HandleBackendFailure(failure, TriggerBackend.NativeKeyboard);
         }
     }
 
@@ -942,6 +1110,13 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
         _mouseSubscribed = true;
     }
 
+    private void SubscribeToKeyboardFallbackService(
+        WindowsGlobalKeyboardFallbackService service)
+    {
+        service.Triggered += OnTriggered;
+        _keyboardFallbackSubscribed = true;
+    }
+
     private void UnsubscribeFromHotkeyService()
     {
         if (!_subscribed || _hotkeyService is null)
@@ -964,6 +1139,18 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
         _mouseButtonService.ButtonDown -= OnMouseButtonDown;
         _mouseButtonService.ButtonUp -= OnMouseButtonUp;
         _mouseSubscribed = false;
+    }
+
+    private void UnsubscribeFromKeyboardFallbackService()
+    {
+        if (!_keyboardFallbackSubscribed ||
+            _keyboardFallbackService is null)
+        {
+            return;
+        }
+
+        _keyboardFallbackService.Triggered -= OnTriggered;
+        _keyboardFallbackSubscribed = false;
     }
 
     private RuntimeMacroStatus[] CreateDisabledStatuses()
@@ -1154,6 +1341,13 @@ internal sealed class MultiMacroHotkeyCoordinator : IDisposable
         ServiceUnavailable,
         Disposing,
         Disposed
+    }
+
+    private enum TriggerBackend
+    {
+        NativeKeyboard,
+        KeyboardFallback,
+        Mouse
     }
 
     private enum ExecutionState

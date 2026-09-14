@@ -12,6 +12,11 @@ internal static class NativeMethods
     internal const uint MouseEventLeftUp = 0x0004;
 
     internal const int WhMouseLowLevel = 14;
+    internal const int WhKeyboardLowLevel = 13;
+    internal const uint WmKeyDown = 0x0100;
+    internal const uint WmKeyUp = 0x0101;
+    internal const uint WmSysKeyDown = 0x0104;
+    internal const uint WmSysKeyUp = 0x0105;
     internal const uint WmXButtonDown = 0x020B;
     internal const uint WmXButtonUp = 0x020C;
     internal const ushort XButton1 = 0x0001;
@@ -75,6 +80,17 @@ internal static class NativeMethods
         nint moduleHandle,
         uint threadId);
 
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "SetWindowsHookExW",
+        ExactSpelling = true,
+        SetLastError = true)]
+    internal static extern nint SetWindowsKeyboardHookEx(
+        int hookId,
+        LowLevelKeyboardHookProcedure hookProcedure,
+        nint moduleHandle,
+        uint threadId);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool UnhookWindowsHookEx(nint hookHandle);
@@ -87,6 +103,11 @@ internal static class NativeMethods
         nint lParam);
 
     internal delegate nint LowLevelMouseHookProcedure(
+        int code,
+        nuint wParam,
+        nint lParam);
+
+    internal delegate nint LowLevelKeyboardHookProcedure(
         int code,
         nuint wParam,
         nint lParam);
@@ -164,6 +185,16 @@ internal static class NativeMethods
     {
         internal Point Point;
         internal uint MouseData;
+        internal uint Flags;
+        internal uint Time;
+        internal nuint ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LowLevelKeyboardHookData
+    {
+        internal uint VirtualKey;
+        internal uint ScanCode;
         internal uint Flags;
         internal uint Time;
         internal nuint ExtraInfo;

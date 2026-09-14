@@ -1,17 +1,17 @@
-# Current V0 architecture
+# Current V1 architecture
 
 ## Design principles
 
-- Keep macro execution independent from WPF and Windows message handling.
-- Keep Win32 P/Invoke declarations and native lifecycle logic out of the UI
-  project.
-- Use small interfaces and internal seams only where they create a real
-  execution, ownership, persistence, or deterministic-testing boundary.
-- Compose the application manually; V0 does not need a dependency-injection
-  container or MVVM framework.
-- Treat the editor draft, saved settings, and active runtime as separate states.
-- Do not introduce a generic scripting, plugin, or preset framework before the
-  product requires one.
+- Keep macro execution independent from WPF and Win32 lifecycle code.
+- Keep native calls and Windows message/hook ownership out of the UI layer.
+- Use narrow internal seams only for real execution or deterministic-test
+  boundaries.
+- Compose the application manually; V1 does not need a dependency-injection or
+  MVVM framework.
+- Treat editor drafts, saved settings, and the active startup runtime as three
+  separate states.
+- Keep fixed-sequence automation simple until a new product requirement proves
+  that another abstraction is needed.
 
 ## Project boundaries
 
@@ -19,62 +19,54 @@
 
 Core owns the platform-independent macro model and execution rules:
 
-- `MacroSequence`, `MacroStep`, `KeyTapStep`, and `DelayStep`;
-- `BuiltInMacroSequences.AbcTest` for the starter configuration;
-- `MacroRunner` and its per-instance non-reentrancy rule;
-- `IKeyboardOutput` and `IDelay` execution boundaries.
+- `MacroSequence` and `MacroStep`;
+- `KeyTapStep`, `DelayStep`, and `MouseButtonTapStep`;
+- keyboard and mouse output vocabularies;
+- `IKeyboardOutput`, `IMouseOutput`, and `IDelay` boundaries;
+- `MacroRunner`, including ordered execution, cancellation cleanup, and
+  per-runner non-reentrancy.
 
-The current macro-output vocabulary is A-Z, Digit0-Digit9, the four arrow keys,
-Enter, Escape, Space, Tab, and Backspace. Core does not reference WPF and does
-not call Win32 APIs.
+`BuiltInMacroSequences.AbcTest` remains a technical test helper, not a current
+factory product macro. Core does not reference WPF or Win32.
 
 ### `NovaMacro.Windows`
 
-Windows adapts Core output and keyboard triggers to Win32:
+Windows adapts Core output and global triggers to Win32:
 
-- `WindowsKeyboardOutput` translates supported Core keys to `SendInput`;
-- `WindowsGlobalHotkeyService` owns `RegisterHotKey`, `WM_HOTKEY`,
-  registration lifecycle, and its background message thread;
-- physical trigger/modifier release is checked through `GetAsyncKeyState`;
-- `KeyboardHotkey`, `HotkeyKey`, modifiers, and virtual-key mapping define
-  the keyboard-trigger vocabulary;
-- narrow internal native and trigger-work seams support deterministic tests.
+- `WindowsKeyboardOutput` and `WindowsMouseOutput` use `SendInput`;
+- `WindowsGlobalHotkeyService` owns `RegisterHotKey`, `WM_HOTKEY`, physical
+  release gating, and its message thread;
+- `WindowsGlobalMouseButtonService` owns the low-level XButton hook and
+  Mouse4/Mouse5 press/release events;
+- registered XButtons are swallowed globally, while unregistered XButtons are
+  forwarded;
+- narrow internal native/scheduler seams support deterministic tests.
 
-The trigger-key model is deliberately separate from Core's output-key model.
-Windows references Core but does not reference WPF or App. Its internal seams
-are test boundaries, not a plugin system or general platform abstraction.
+Windows references Core but not App or WPF. These seams are test boundaries,
+not plugins or a general platform framework.
 
 ### `NovaMacro.App`
 
 App is the WPF host and composition root. It owns:
 
-- `SingleInstanceGuard`, which admits one NovaMacro process per current Windows
-  session;
-- the one-macro configuration model, validation policy, JSON codec, and portable
-  settings store;
-- `StartupConfigurationCoordinator`, which loads once and chooses editor and
-  runtime settings without saving;
-- `MainWindow`, `MacroEditorDraft`, and `MacroEditorSaveCoordinator`;
-- construction of the Windows output, delay, runner, hotkey service, and
-  `MacroHotkeyCoordinator` when runtime activation is appropriate;
-- startup/runtime status, activation-failure recovery, and shutdown cleanup.
+- `SingleInstanceGuard`;
+- the canonical zero-to-32 macro configuration domain;
+- validation, JSON V1/V2/V3 compatibility, and the portable settings store;
+- `StartupConfigurationCoordinator` and status presentation;
+- `MainWindow`, the multi-macro editor draft/control, and save coordination;
+- `MultiMacroHotkeyCoordinator`, registration ownership, global execution
+  admission, and held-mouse iteration policy;
+- construction and shutdown of Windows services and the shared runner.
 
-App contains no P/Invoke and does not reimplement macro execution.
+App contains no P/Invoke and does not reimplement input execution.
 
 ### `NovaMacro.Tests`
 
-Tests reference Core, Windows, and App. Coverage includes:
-
-- Core model and runner contracts;
-- final Windows keyboard packets and hotkey lifecycle/concurrency behavior;
-- configuration validation, JSON serialization, and portable storage;
-- editor draft/save coordination and single-instance ownership;
-- startup four-state resolution, same-snapshot mapping, and zero automatic Save;
-- App hotkey-to-macro coordination.
-
-Controlled fakes make boundary behavior deterministic. Real Windows validation
-still covers the actual `RegisterHotKey`, `SendInput`, process, restart, and
-foreground-window paths.
+Tests reference all three production projects. Controlled native APIs,
+schedulers, delays, and outputs make concurrency and lifecycle tests
+deterministic. Real-Windows and human checks cover the boundaries that fakes
+cannot prove, including actual input, global registration, GTA behavior, and
+the final WPF layout.
 
 ## Dependency direction
 
@@ -82,13 +74,29 @@ foreground-window paths.
 NovaMacro.App ───────► NovaMacro.Windows ───────► NovaMacro.Core
       └────────────────────────────────────────► NovaMacro.Core
 
-NovaMacro.Tests ─────► NovaMacro.App
-NovaMacro.Tests ─────► NovaMacro.Windows
-NovaMacro.Tests ─────► NovaMacro.Core
+NovaMacro.Tests ─────► NovaMacro.App / NovaMacro.Windows / NovaMacro.Core
 ```
 
-Core never depends on Windows, App, or Tests. Windows never depends on WPF or
-App.
+Core never depends on Windows, App, or Tests. Windows never depends on App or
+WPF.
+
+## Canonical configuration
+
+```text
+ApplicationSettings
+└─ Macros (0..32)
+   └─ MacroDefinition
+      ├─ MacroId
+      ├─ Name
+      ├─ Enabled
+      ├─ MacroTrigger
+      ├─ MacroExecutionMode
+      └─ MacroSequence
+```
+
+`MacroTrigger` separates keyboard hotkeys from Mouse4/Mouse5 buttons. Trigger
+keys and output keys deliberately use different vocabularies. Macro identity is
+a stable `MacroId`; names are editable labels, not identifiers.
 
 ## Startup decision flow
 
@@ -103,111 +111,100 @@ JsonSettingsStore.Load (once)
     │
     ▼
 StartupConfigurationCoordinator
-    │
-    ├─ Missing ─────► starter editor + starter runtime
+    ├─ Missing ─────► four GTA factory macros in editor + runtime
     ├─ Loaded ──────► saved editor + same saved runtime
-    ├─ Invalid ─────► starter recovery editor + no runtime
-    └─ Unavailable ─► starter recovery editor + no runtime
+    ├─ Invalid ─────► empty recovery editor + no runtime
+    └─ Unavailable ─► empty recovery editor + no runtime
 ```
 
-Startup never saves settings. Missing does not create a file. Invalid or
-unavailable settings are not replaced automatically, and neither state silently
-activates the starter runtime.
+Startup never saves. Missing settings remain missing until an explicit Save.
+Existing V1, V2, V3, and valid empty settings are authoritative and never
+receive factory-macro injection. Invalid or unavailable data is not silently
+overwritten.
 
-For a ready state, App passes the same immutable `ApplicationSettings` snapshot
-to the runtime hotkey and sequence selection. This prevents mixed combinations
-such as a loaded hotkey with the starter sequence.
+The factory macros are ordinary `MacroDefinition` objects with fresh,
+non-legacy IDs. They have no persisted origin marker, lock, badge, or automatic
+restore behavior.
 
-## Active runtime flow
+## Registration and runtime flow
 
 ```text
-configured hotkey press/release
-       │
-       ▼
-WindowsGlobalHotkeyService
-(RegisterHotKey, WM_HOTKEY, MOD_NOREPEAT)
-       │
-       ▼
-physical trigger/modifier release gate
-(GetAsyncKeyState)
-       │
-       ▼
-MacroHotkeyCoordinator
-       │
-       ▼
-one reused MacroRunner
-       │
-       ▼
-startupSettings.Macro.Sequence
-       │
-       ▼
-WindowsKeyboardOutput → SendInput
-       │
-       ▼
-current foreground application
+immutable startup settings
+    │ enabled macros
+    ▼
+MultiMacroHotkeyCoordinator
+    ├─ keyboard trigger ─► WindowsGlobalHotkeyService
+    └─ Mouse4/Mouse5 ────► WindowsGlobalMouseButtonService
+                              │
+                              ▼
+                    synchronous global admission
+                              │ accepted only if idle
+                              ▼
+                         MacroRunner
+                              │
+                              ▼
+          WindowsKeyboardOutput / WindowsMouseOutput
+                              │
+                              ▼
+                  current foreground application
 ```
 
-The service waits until the configured trigger and modifiers are physically
-released before publishing `Triggered`. If the one runner is already active,
-`MacroRunner` returns `AlreadyRunning`; the new activation is dropped rather
-than queued or retried.
+One coordinator-level owner covers keyboard `Once`, mouse `Once`, and mouse
+`RepeatWhileHeld` work. A trigger received while busy is dropped synchronously:
+no worker is queued and no delayed retry occurs.
 
-`KeyTapStep` performs key-down followed by key-up. If key-down succeeds, the
-runner attempts key-up exactly once. Delays use `TaskDelay`, so the WPF thread
-is not blocked while the macro waits.
+For `RepeatWhileHeld`, an accepted press always receives one complete
+iteration. A continuing hold starts further iterations serially. Release is
+soft: it finishes the current iteration and prevents the next one. The global
+owner remains held between iterations.
 
-## Editor save flow and runtime snapshot
+## Factory product configuration
+
+Only genuinely missing settings create these enabled macros, in order:
+
+1. Buy All Ammo — `Alt+R`, `Once`.
+2. Drop Bull Shark — `Alt+E`, `Once`.
+3. Request Sparrow — `Ctrl+Alt+H`, `Once`.
+4. Heavy Weapon Rapid Fire — `Mouse4`, `RepeatWhileHeld`.
+
+The catalog is internal factory-data infrastructure. The main UI does not
+expose a preset selector or Add-from-preset workflow.
+
+## Persistence and save flow
+
+`JsonSettingsStore` uses
+`AppContext.BaseDirectory/data/settings.json`. It reads V1, V2, and V3; current
+saves write V3. Older versions migrate in memory and are not rewritten merely
+because they were loaded.
 
 ```text
-MainWindow
-    ▼
-MacroEditorDraft
-    ▼
-ConfigurationValidator
-    ▼
+MainWindow draft
+    ▼ validate
 MacroEditorSaveCoordinator
     ▼
-JsonSettingsStore.Save
+JsonSettingsStore.Save (V3)
 ```
 
-The startup resolver and save coordinator share one store instance so they use
-the same canonical path. Save validates and replaces the versioned JSON file,
-but it does not access or replace the active coordinator. If runtime A was
-loaded at startup, editing and saving B leaves runtime A active; B is loaded on
-the next launch. There is no live apply or automatic restart.
+Save replaces the file but never reconfigures the running coordinator. If
+startup loaded A, saving B leaves runtime A active until the next launch.
 
-## Ownership, failure, and shutdown
+## Failure and shutdown
 
-Single-instance ownership is acquired before the settings store is constructed
-or loaded. A rejected secondary instance therefore does not become a settings
-or runtime owner.
+Registration failures are reported per macro. Partial and zero-registration
+states keep the editor usable, while terminal service failures preserve whether
+the failure occurred during initial startup or after a previously active
+runtime.
 
-When runtime settings are available, App manually constructs the runtime graph
-and transfers hotkey-service ownership to `MacroHotkeyCoordinator`. If hotkey
-registration or runtime activation fails, the temporary coordinator/service is
-disposed, the editor still opens with the attempted configuration, and runtime
-status is inactive. NovaMacro does not choose a fallback key or starter F8.
+Shutdown closes trigger admission, cancels owned work, disposes both global
+trigger services, waits for tracked macro tasks, and releases the
+single-instance guard late in application shutdown.
 
-During normal shutdown the coordinator closes admission, cancels its macro
-lifetime, disposes the hotkey service, and waits for tracked macro tasks. The
-single-instance guard remains held until late application shutdown. Recovery
-mode has no coordinator, so shutdown is null-safe.
+## Windows behavior and limitations
 
-## Foreground-target policy
+`SendInput` targets whichever application is foreground for each event.
+NovaMacro neither chooses nor validates a GTA window.
 
-NovaMacro does not select, remember, or validate a target window. `SendInput`
-feeds the Windows input stream, so whichever application is in the foreground
-when an event is sent is the effective target.
-
-## Hotkey capability and App policy
-
-The Windows backend can represent A-Z and F1-F11 triggers with no modifier or
-any combination of Control, Alt, and Shift. The App/configuration layer exposes
-that vocabulary but rejects modifierless A-Z. Modifierless F1-F11 and modified
-A-Z/F1-F11 combinations are allowed; F12 is unsupported.
-
-The letter restriction is an App safety policy, not a Windows model defect.
-Registering a modifierless letter can suppress ordinary foreground typing, and
-matching generated output can create self-trigger risk. Mouse4/Mouse5 triggers
-remain unimplemented; a future mouse trigger source should not require changing
-`MacroRunner`.
+Keyboard trigger policy allows F1-F11 and supported numpad keys without
+modifiers; A-Z requires at least one of Control, Alt, or Shift. NumpadEnter is
+an output key but is not exposed as a distinct trigger. Mouse4/Mouse5 triggers
+are global and intentionally have no GTA foreground filter in V1.

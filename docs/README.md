@@ -2,28 +2,30 @@
 
 ## Index
 
-- [Architecture](architecture.md): project boundaries, startup decisions,
-  runtime and editor-save flows, ownership, lifecycle, and Windows isolation.
-- [V0 scope](v0-scope.md): current capabilities, configuration format, startup
-  recovery rules, supported keys, usage constraints, and deferred features.
+- [Architecture](architecture.md): module boundaries, startup decisions,
+  runtime coordination, persistence, ownership, and Windows isolation.
+- [V1 product scope](v0-scope.md): current capabilities, input vocabulary,
+  factory defaults, startup behavior, safety constraints, and deferred work.
 
-## Current development state
+The `v0-scope.md` filename is retained for repository link compatibility; its
+content now describes the shipped V1 product state.
 
-NovaMacro now implements the configurable V0 vertical slice:
+## Current product state
 
-- one editable macro with a keyboard hotkey and ordered Key Tap/Delay steps;
-- validation and portable versioned JSON persistence;
-- startup loading from `data/settings.json`;
-- configured hotkey registration and configured sequence execution;
-- recovery UI for invalid, unavailable, or unregistrable settings;
-- single-instance ownership for the current Windows session;
-- real Windows keyboard output through `SendInput` to the foreground window;
-- deterministic automated coverage plus real-Windows integration validation.
+NovaMacro V1 is a configurable multi-macro Windows desktop application:
 
-Saving is deliberately restart-applied: the active runtime keeps its immutable
-startup configuration until NovaMacro exits. The editor, saved file, and active
-runtime are separate states.
+- zero to 32 ordinary editable macros;
+- keyboard and Mouse4/Mouse5 global triggers;
+- `Once` and mouse `RepeatWhileHeld` execution;
+- keyboard, numpad, left-mouse-tap, and delay steps;
+- portable JSON settings with V1/V2 migration and V3 writes;
+- missing-only GTA factory defaults;
+- restart-applied saves and immutable active runtime settings;
+- single-instance ownership and deterministic boundary coverage.
 
-NovaMacro remains intentionally small. Multiple macros, live apply, physical
-hotkey capture, mouse input, recording, loops, conditions, vision, OCR, AI, GTA
-state detection, packaging, and installer behavior are not implemented.
+The runtime sends input to the current foreground application. Mouse side-button
+triggers are global while registered; V1 has no GTA foreground-process filter.
+
+NovaMacro remains fixed-sequence automation. Recording, conditions, loops,
+computer vision, OCR, GTA state recognition, live apply, plugins, and an
+installer are not part of V1.

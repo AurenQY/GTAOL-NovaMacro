@@ -16,13 +16,14 @@ internal sealed class StartupConfigurationCoordinator
     internal StartupConfigurationResult Resolve()
     {
         SettingsLoadResult loadResult = _settingsStore.Load();
-        ApplicationSettings starterSettings = StarterConfiguration.Default;
+        ApplicationSettings recoverySettings = new(
+            Array.Empty<MacroDefinition>());
 
         return loadResult.Status switch
         {
             SettingsLoadStatus.Missing =>
                 StartupConfigurationResult.StarterReady(
-                    starterSettings,
+                    StarterConfiguration.Default,
                     _settingsStore.SettingsPath),
 
             SettingsLoadStatus.Loaded =>
@@ -33,14 +34,14 @@ internal sealed class StartupConfigurationCoordinator
 
             SettingsLoadStatus.Invalid =>
                 StartupConfigurationResult.InvalidRecovery(
-                    starterSettings,
+                    recoverySettings,
                     _settingsStore.SettingsPath,
                     loadResult.JsonReadResult,
                     loadResult.Error),
 
             SettingsLoadStatus.Unavailable =>
                 StartupConfigurationResult.UnavailableRecovery(
-                    starterSettings,
+                    recoverySettings,
                     _settingsStore.SettingsPath,
                     loadResult.Error ?? throw InvalidLoadResult(
                         "Unavailable settings require a storage error.")),

@@ -67,6 +67,7 @@ public partial class MainWindow : Window
             startupSettings);
         RuntimeStatusText.Text = "Runtime execution failed. The configuration was not changed.";
         RuntimeStatusText.Foreground = Brushes.Firebrick;
+        SetRuntimePanelAppearance(compact: false);
         RuntimeDiagnosticsList.ItemsSource = new[] { message };
         RuntimeDiagnosticsScrollViewer.Visibility = Visibility.Visible;
     }
@@ -139,8 +140,9 @@ public partial class MainWindow : Window
     {
         if (startupConfiguration.RuntimeSettings is not null)
         {
-            RuntimeStatusText.Text = "Preparing runtime from the startup configuration.";
+            RuntimeStatusText.Text = "Runtime: Preparing";
             RuntimeStatusText.Foreground = Brushes.DimGray;
+            SetRuntimePanelAppearance(compact: true);
             RuntimeDiagnosticsScrollViewer.Visibility = Visibility.Collapsed;
             return;
         }
@@ -150,6 +152,7 @@ public partial class MainWindow : Window
             ? "Runtime inactive: saved configuration could not be loaded."
             : "Runtime inactive: settings storage is unavailable.";
         RuntimeStatusText.Foreground = Brushes.Firebrick;
+        SetRuntimePanelAppearance(compact: false);
         RuntimeDiagnosticsList.ItemsSource = startupConfiguration.Diagnostics;
         RuntimeDiagnosticsScrollViewer.Visibility = Visibility.Visible;
     }
@@ -160,10 +163,31 @@ public partial class MainWindow : Window
         RuntimeStatusText.Foreground = presentation.IsHealthy
             ? Brushes.ForestGreen
             : Brushes.Firebrick;
+        SetRuntimePanelAppearance(presentation.IsHealthy &&
+            presentation.Diagnostics.Count == 0);
         RuntimeDiagnosticsList.ItemsSource = presentation.Diagnostics;
         RuntimeDiagnosticsScrollViewer.Visibility = presentation.Diagnostics.Count == 0
             ? Visibility.Collapsed
             : Visibility.Visible;
+    }
+
+    private void SetRuntimePanelAppearance(bool compact)
+    {
+        RuntimeStatusPanel.Padding = compact
+            ? new Thickness(0)
+            : new Thickness(10);
+        RuntimeStatusPanel.Background = compact
+            ? Brushes.Transparent
+            : new SolidColorBrush(Color.FromRgb(247, 247, 247));
+        RuntimeStatusPanel.BorderBrush = compact
+            ? Brushes.Transparent
+            : Brushes.LightGray;
+        RuntimeStatusPanel.BorderThickness = compact
+            ? new Thickness(0)
+            : new Thickness(1);
+        RuntimeStatusPanel.CornerRadius = compact
+            ? new CornerRadius(0)
+            : new CornerRadius(4);
     }
 
     private void ShowSaveStatus(string message, Brush foreground)

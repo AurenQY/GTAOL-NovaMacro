@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using NovaMacro.App.Configuration;
-using NovaMacro.App.Presets;
 using NovaMacro.Core;
 using NovaMacro.Windows;
 
@@ -22,7 +21,6 @@ public partial class MultiMacroEditorControl : UserControl
         ArgumentNullException.ThrowIfNull(draft);
 
         _draft = draft;
-        Presets = BuiltInPresetCatalog.All;
         HotkeyKeys = Array.AsReadOnly(Enum.GetValues<HotkeyKey>());
         OutputKeys = Array.AsReadOnly(Enum.GetValues<KeyboardKey>());
         TriggerKinds = Array.AsReadOnly(Enum.GetValues<MacroTriggerEditorKind>());
@@ -35,9 +33,6 @@ public partial class MultiMacroEditorControl : UserControl
             Enum.GetValues<MacroExecutionMode>());
 
         InitializeComponent();
-
-        PresetSelector.ItemsSource = Presets;
-        PresetSelector.SelectedItem = Presets.FirstOrDefault();
 
         _draft.Changed += OnDraftChanged;
         DataContext = _draft;
@@ -54,19 +49,9 @@ public partial class MultiMacroEditorControl : UserControl
 
     public IReadOnlyList<MacroExecutionMode> ExecutionModes { get; }
 
-    internal IReadOnlyList<BuiltInPresetDefinition> Presets { get; }
-
     private void AddMacro_Click(object sender, RoutedEventArgs e)
     {
         _draft.AddMacro();
-    }
-
-    private void AddFromPreset_Click(object sender, RoutedEventArgs e)
-    {
-        if (PresetSelector.SelectedItem is BuiltInPresetDefinition preset)
-        {
-            _draft.AddFromPreset(preset);
-        }
     }
 
     private void DeleteMacro_Click(object sender, RoutedEventArgs e)
@@ -125,12 +110,14 @@ public partial class MultiMacroEditorControl : UserControl
 
         if (validation.IsValid)
         {
+            ValidationPanel.Visibility = Visibility.Collapsed;
             ValidationStatusText.Foreground = Brushes.DarkGreen;
             ValidationStatusText.Text = "All macros are valid.";
             ValidationErrorsList.ItemsSource = Array.Empty<string>();
             return;
         }
 
+        ValidationPanel.Visibility = Visibility.Visible;
         ValidationStatusText.Foreground = Brushes.Firebrick;
         ValidationStatusText.Text = "Fix the listed issues before saving after integration.";
         ValidationErrorsList.ItemsSource = FormatValidationMessages(validation);

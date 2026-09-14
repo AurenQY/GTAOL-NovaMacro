@@ -73,7 +73,7 @@ internal sealed class RuntimeStatusPresentation
             status.State switch
             {
                 MultiMacroRuntimeState.Active =>
-                    "Runtime active: all enabled macros are registered.",
+                    "Runtime: Active",
                 MultiMacroRuntimeState.PartiallyActive =>
                     "Runtime partially active: some enabled macros could not be registered.",
                 MultiMacroRuntimeState.NoEnabledMacros =>
@@ -87,8 +87,7 @@ internal sealed class RuntimeStatusPresentation
                 _ => throw new InvalidOperationException(
                     $"Unsupported multi-macro runtime state '{status.State}'.")
             },
-            status.State is MultiMacroRuntimeState.Active or
-                MultiMacroRuntimeState.PartiallyActive,
+            status.State == MultiMacroRuntimeState.Active,
             diagnostics);
     }
 

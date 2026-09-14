@@ -6,14 +6,14 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
     </UserControl.Resources>
 
-    <Grid Margin="16">
+    <Grid Margin="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="240" />
-            <ColumnDefinition Width="16" />
+            <ColumnDefinition Width="220" />
+            <ColumnDefinition Width="12" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <Border Padding="12" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4">
+        <Border Padding="10" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -23,7 +23,7 @@
 
                 <TextBlock FontSize="17" FontWeight="SemiBold" Text="Macros" />
 
-                <Grid Grid.Row="1" Margin="0,12,0,12">
+                <Grid Grid.Row="1" Margin="0,8,0,8">
                     <ListBox ItemsSource="{Binding Macros}"
                              SelectedItem="{Binding SelectedMacro, Mode=TwoWay}">
                         <ListBox.ItemTemplate>
@@ -68,21 +68,6 @@
                                 Click="DeleteMacro_Click"
                                 Content="Delete Macro" />
                     </Grid>
-                    <Grid Margin="0,8,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <ComboBox x:Name="PresetSelector"
-                                  Padding="5,3" />
-                        <Button x:Name="AddFromPresetButton"
-                                Grid.Column="1"
-                                MinWidth="112"
-                                Margin="8,0,0,0"
-                                Padding="8,5"
-                                Click="AddFromPreset_Click"
-                                Content="Add from preset" />
-                    </Grid>
                 </StackPanel>
             </Grid>
         </Border>
@@ -93,7 +78,7 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Border Padding="16" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4">
+            <Border Padding="12" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4">
                 <ContentControl Content="{Binding SelectedMacro}">
                     <ContentControl.ContentTemplate>
                         <DataTemplate>
@@ -117,7 +102,7 @@
                                 <CheckBox Grid.Row="1" Grid.Column="1" Margin="0,14,0,0" VerticalAlignment="Center" Content="Register this macro when integrated" IsChecked="{Binding Enabled, Mode=TwoWay}" />
 
                                 <TextBlock Grid.Row="2" Margin="0,14,0,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="Trigger" />
-                                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,14,0,0" Orientation="Horizontal">
+                                <WrapPanel Grid.Row="2" Grid.Column="1" Margin="0,14,0,0">
                                     <ComboBox Width="112" Padding="5,3" ItemsSource="{Binding TriggerKinds, RelativeSource={RelativeSource AncestorType={x:Type local:MultiMacroEditorControl}}}" SelectedItem="{Binding TriggerKind, Mode=TwoWay}" />
                                     <StackPanel Margin="10,0,0,0" Orientation="Horizontal" Visibility="{Binding IsKeyboardTrigger, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <ComboBox Width="124" Padding="5,3" ItemsSource="{Binding HotkeyKeys, RelativeSource={RelativeSource AncestorType={x:Type local:MultiMacroEditorControl}}}" SelectedItem="{Binding HotkeyKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -126,12 +111,12 @@
                                         <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Shift" IsChecked="{Binding Shift, Mode=TwoWay}" />
                                     </StackPanel>
                                     <ComboBox Width="124" Margin="10,0,0,0" Padding="5,3" ItemsSource="{Binding MouseTriggerButtons, RelativeSource={RelativeSource AncestorType={x:Type local:MultiMacroEditorControl}}}" SelectedItem="{Binding MouseButton, Mode=TwoWay}" Visibility="{Binding IsMouseTrigger, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                </StackPanel>
+                                </WrapPanel>
 
                                 <TextBlock Grid.Row="3" Margin="0,14,0,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="Execution" />
                                 <ComboBox Grid.Row="3" Grid.Column="1" Width="180" Margin="0,14,0,0" HorizontalAlignment="Left" Padding="5,3" ItemsSource="{Binding ExecutionModes, RelativeSource={RelativeSource AncestorType={x:Type local:MultiMacroEditorControl}}}" SelectedItem="{Binding ExecutionMode, Mode=TwoWay}" />
 
-                                <Grid Grid.Row="4" Grid.ColumnSpan="2" Margin="0,18,0,0">
+                                <Grid Grid.Row="4" Grid.ColumnSpan="2" Margin="0,12,0,0">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="*" />
@@ -183,7 +168,9 @@
                 </ContentControl>
             </Border>
 
-            <Border Grid.Row="1" Margin="0,14,0,0" Padding="12" Background="#F7F7F7" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4">
+            <Border x:Name="ValidationPanel" Grid.Row="1" Margin="0,8,0,0" Padding="10"
+                    Background="#F7F7F7" BorderBrush="#D0D0D0" BorderThickness="1"
+                    CornerRadius="4" Visibility="Collapsed">
                 <StackPanel>
                     <TextBlock x:Name="ValidationStatusText" FontWeight="SemiBold" />
                     <ItemsControl x:Name="ValidationErrorsList" Margin="0,6,0,0">

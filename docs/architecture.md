@@ -36,6 +36,8 @@ Windows adapts Core output and global triggers to Win32:
 - `WindowsKeyboardOutput` and `WindowsMouseOutput` use `SendInput`;
 - `WindowsGlobalHotkeyService` owns `RegisterHotKey`, `WM_HOTKEY`, physical
   release gating, and its message thread;
+- `WindowsGlobalKeyboardFallbackService` owns the shared `WH_KEYBOARD_LL`
+  observation fallback used only for `RegisterHotKey` collision error 1409;
 - `WindowsGlobalMouseButtonService` owns the low-level XButton hook and
   Mouse4/Mouse5 press/release events;
 - registered XButtons are swallowed globally, while unregistered XButtons are
@@ -134,6 +136,8 @@ immutable startup settings
     ▼
 MultiMacroHotkeyCoordinator
     ├─ keyboard trigger ─► WindowsGlobalHotkeyService
+    │                       └─ error 1409 only
+    │                          ─► WindowsGlobalKeyboardFallbackService
     └─ Mouse4/Mouse5 ────► WindowsGlobalMouseButtonService
                               │
                               ▼
@@ -195,7 +199,7 @@ states keep the editor usable, while terminal service failures preserve whether
 the failure occurred during initial startup or after a previously active
 runtime.
 
-Shutdown closes trigger admission, cancels owned work, disposes both global
+Shutdown closes trigger admission, cancels owned work, disposes all active global
 trigger services, waits for tracked macro tasks, and releases the
 single-instance guard late in application shutdown.
 
@@ -208,3 +212,10 @@ Keyboard trigger policy allows F1-F11 and supported numpad keys without
 modifiers; A-Z requires at least one of Control, Alt, or Shift. NumpadEnter is
 an output key but is not exposed as a distinct trigger. Mouse4/Mouse5 triggers
 are global and intentionally have no GTA foreground filter in V1.
+
+Keyboard hotkeys first use Windows `RegisterHotKey`. Only an
+`ERROR_HOTKEY_ALREADY_REGISTERED` (1409) collision activates the shared
+low-level keyboard observation fallback. The fallback observes and forwards
+input rather than taking exclusive ownership, so the application that already
+owns the shortcut may also react. It does not bypass Windows security or add a
+GTA foreground filter.

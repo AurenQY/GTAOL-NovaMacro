@@ -30,6 +30,10 @@ not automatically restored.
 
 - NovaMacro sends input to whichever application is currently foreground. Make
   sure GTA is foreground before triggering a GTA macro.
+- NovaMacro first uses ordinary Windows global hotkey registration. If another
+  application already owns the same keyboard hotkey, NovaMacro can fall back to
+  non-exclusive keyboard observation; both applications may then react to that
+  shortcut.
 - When an enabled macro owns Mouse4 or Mouse5, NovaMacro globally captures that
   button while the runtime is active. V1 does not filter triggers by the
   foreground GTA process.
@@ -63,7 +67,7 @@ dotnet test NovaMacro.sln --configuration Release --no-build
 dotnet run --project src/NovaMacro.App/NovaMacro.App.csproj --configuration Release
 ```
 
-Current verified baseline: Release build with 0 warnings and 0 errors; 975
+Current verified baseline: Release build with 0 warnings and 0 errors; 1008
 automated tests passed with 0 failures and 0 skipped. Real Windows input,
 hotkey, first-run, persistence, single-instance, GTA functional, and compact UI
 flows have also been validated.

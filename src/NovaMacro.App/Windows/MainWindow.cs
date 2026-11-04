@@ -302,7 +302,7 @@ public sealed class MainWindow : ThemedWindow
             VerticalAlignment = VerticalAlignment.Center,
         };
         _keepInTray.Content = new TextBlock { Text = "关闭后保留在托盘", FontSize = 11, Foreground = Ui.Res("FgDim") };
-        _keepInTray.ToolTip = "勾选：关闭主界面后继续在托盘运行，热键仍然有效\n不勾选：关闭主界面即退出程序";
+        _keepInTray.ToolTip = "勾选：关闭主界面后继续在托盘运行，热键仍然有效\n不勾选：关闭主界面即直接退出程序（不再询问）";
         _keepInTray.IsChecked = App.Instance.KeepInTray;
         _keepInTray.Checked += (_, _) => App.Instance.KeepInTray = true;
         _keepInTray.Unchecked += (_, _) => App.Instance.KeepInTray = false;
@@ -352,10 +352,8 @@ public sealed class MainWindow : ThemedWindow
             return;
         }
 
-        if (Dialog.Confirm(this, "确定退出 NovaMacro？\n\n（勾选主界面底部的“关闭后保留在托盘”，关闭窗口时程序会继续在托盘运行）", "退出"))
-        {
-            App.Instance.ExitApp();
-        }
+        // The user turned "关闭后保留在托盘" off on purpose: exit without asking again.
+        App.Instance.ExitApp();
     }
 }
 

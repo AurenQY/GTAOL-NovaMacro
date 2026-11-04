@@ -35,7 +35,8 @@ public sealed class ToolsWindow : ThemedWindow
         SizeToContent = SizeToContent.WidthAndHeight;
         ResizeMode = ResizeMode.CanMinimize;
         WindowPositions.Restore(this, host.Settings, "小工具");
-        LocationChanged += (_, _) => WindowPositions.Save(this, host.Settings, "小工具");
+        Deactivated += (_, _) => WindowPositions.Save(this, host.Settings, "小工具");
+        Closing += (_, _) => WindowPositions.Save(this, host.Settings, "小工具");
 
         var left = new StackPanel { Width = 430 };
         left.Children.Add(BuildTools());

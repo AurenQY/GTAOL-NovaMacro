@@ -31,7 +31,8 @@ public sealed class SettingsWindow : ThemedWindow
         Width = 1120;
         Height = 690;
         WindowPositions.Restore(this, host.Settings, "设置界面");
-        LocationChanged += (_, _) => WindowPositions.Save(this, host.Settings, "设置界面");
+        Deactivated += (_, _) => WindowPositions.Save(this, host.Settings, "设置界面");
+        Closing += (_, _) => WindowPositions.Save(this, host.Settings, "设置界面");
 
         var pages = SettingsSchema.SectionOrder.Where(s => SettingsSchema.All.Any(d => d.Section == s && !d.Hidden)).ToList();
         pages.Insert(0, HotkeyPage);
@@ -277,8 +278,7 @@ public sealed class SettingsWindow : ThemedWindow
             };
             button.MouseRightButtonUp += (_, _) =>
             {
-                _host.Settings.Document.Remove(Sec.KeyOverrides, action.Action.ToString());
-                _host.ReloadKeyMap();
+                _host.Settings.Remove(Sec.KeyOverrides, action.Action.ToString());
                 ShowPage(KeyMapPage);
             };
             rows.Add((Ui.Text(action.DisplayName), button));

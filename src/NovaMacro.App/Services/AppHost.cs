@@ -227,6 +227,8 @@ public sealed class AppHost : IDisposable
         Fps.Dispose();
         Audio.Dispose();
         Tools.Dispose();
+        Game.Dispose();
+        Log.Flush();
         Settings.Save();
     }
 

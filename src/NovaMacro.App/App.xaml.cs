@@ -35,6 +35,8 @@ public partial class App : Application
             args.Handled = true;
         };
 
+        // Avoid long blocking GCs: the keyboard hook thread must never be paused for long.
+        System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         Host = new AppHost();
         Host.Start();
         Shell = new MainWindow(Host);

@@ -145,6 +145,43 @@ public class SettingsStoreTests
     }
 
     [Fact]
+    public void CachedValuesAreInvalidatedOnWrite()
+    {
+        var store = new SettingsStore(new IniDocument());
+        Assert.Equal(700, store.GetInt(Sec.WeaponJam, "懒人速射间隔"));
+        store.SetInt(Sec.WeaponJam, "懒人速射间隔", 640);
+        Assert.Equal(640, store.GetInt(Sec.WeaponJam, "懒人速射间隔"));
+        store.Remove(Sec.WeaponJam, "懒人速射间隔");
+        Assert.Equal(700, store.GetInt(Sec.WeaponJam, "懒人速射间隔"));
+        store.Set(Sec.WeaponJam, "宏模式", "单次切枪");
+        store.ResetSection(Sec.WeaponJam);
+        Assert.Equal("自动速射", store.GetString(Sec.WeaponJam, "宏模式"));
+    }
+
+    [Fact]
+    public void ConcurrentReadsDuringWritesAreSafe()
+    {
+        var store = new SettingsStore(new IniDocument());
+        var stop = false;
+        var reader = Task.Run(() =>
+        {
+            while (!Volatile.Read(ref stop))
+            {
+                _ = store.GetInt(Sec.WeaponJam, "按键延迟");
+                _ = store.GetBool(Sec.Switches, "武器卡弹");
+            }
+        });
+        for (var i = 0; i < 2000; i++)
+        {
+            store.SetInt(Sec.WeaponJam, "按键延迟", 20 + (i % 5));
+        }
+
+        Volatile.Write(ref stop, true);
+        reader.Wait();
+        Assert.Equal(24, store.GetInt(Sec.WeaponJam, "按键延迟"));
+    }
+
+    [Fact]
     public void BooleansUseChineseTrueFalse()
     {
         Assert.True(SettingValues.ToBool("真"));

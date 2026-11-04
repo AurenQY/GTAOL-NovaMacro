@@ -20,6 +20,7 @@ public sealed class MacroRuntime
     private readonly ClickClassifier _stopClassifier = new(250, 800);
     private CancellationTokenSource _stopCts = new();
     private Snapshot[] _snapshot = Array.Empty<Snapshot>();
+    private HashSet<int> _hotkeyCodes = new();
     private Hotkey _stopHotkey;
     private bool _locked;
 
@@ -31,7 +32,14 @@ public sealed class MacroRuntime
             AddFeatureUnlocked(feature);
         }
 
-        services.Settings.Changed += (_, _) => Refresh();
+        services.Settings.Changed += (_, e) =>
+        {
+            // Only switches and hotkeys affect routing; ignore window positions, counters, etc.
+            if (e.Section is Sec.Switches or Sec.Tools or Sec.StopMacro || e.Section.EndsWith("热键", StringComparison.Ordinal) || e.Key.Length == 0)
+            {
+                Refresh();
+            }
+        };
         Refresh();
     }
 
@@ -114,6 +122,7 @@ public sealed class MacroRuntime
                 f,
                 f.CustomHotkey ?? _services.Settings.GetHotkey(f.Definition),
                 f.CustomEnabled ?? IsEnabled(f.Definition))).ToArray();
+            _hotkeyCodes = _snapshot.Where(s => !s.Hotkey.IsEmpty).Select(s => s.Hotkey.Key).ToHashSet();
             foreach (var s in _snapshot)
             {
                 if (previous.TryGetValue(s.Feature, out var was) && was != s.Enabled)
@@ -206,8 +215,10 @@ public sealed class MacroRuntime
             }
         }
 
-        // Hotkey chords: the most specific (most modifiers) match wins.
-        if (!isRepeat)
+        // Hotkey chords: the most specific (most modifiers) match wins. Most key presses are not
+        // hotkeys at all, so skip the matching work for them.
+        var isHotkeyCode = _hotkeyCodes.Contains(code);
+        if (!isRepeat && isHotkeyCode)
         {
             if (isDown)
             {
@@ -280,7 +291,7 @@ public sealed class MacroRuntime
                 }
             }
         }
-        else
+        else if (isRepeat && isHotkeyCode)
         {
             lock (_gate)
             {

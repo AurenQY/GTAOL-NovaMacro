@@ -102,6 +102,31 @@ public class RuntimeTests
     }
 
     [Fact]
+    public void InputRoutingIsCheapPerKeyPress()
+    {
+        // The keyboard hook calls HandleInput for every key press on the whole PC; it must stay in
+        // the low-microsecond range so typing in other applications is never delayed.
+        var h = new Harness();
+        for (var i = 0; i < 2000; i++)
+        {
+            h.Runtime.HandleInput(InputCodes.Letter('K'), true);
+            h.Runtime.HandleInput(InputCodes.Letter('K'), false);
+        }
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        const int n = 20000;
+        for (var i = 0; i < n; i++)
+        {
+            h.Runtime.HandleInput(InputCodes.Letter('K'), true);
+            h.Runtime.HandleInput(InputCodes.Letter('K'), false);
+        }
+
+        var perEventMicroseconds = sw.Elapsed.TotalMilliseconds * 1000 / (2 * n);
+        Assert.True(perEventMicroseconds < 50, $"HandleInput took {perEventMicroseconds:0.0} µs per event");
+        Assert.Empty(h.Output.Events);
+    }
+
+    [Fact]
     public void DisabledFeatureDoesNothing()
     {
         var h = new Harness("[记忆开关]\n买满子弹=假\n");

@@ -127,7 +127,8 @@ public sealed class MainWindow : ThemedWindow
         };
         UpdateStatus();
         Closing += OnClosing;
-        LocationChanged += (_, _) => WindowPositions.Save(this, host.Settings, "主界面");
+        Deactivated += (_, _) => WindowPositions.Save(this, host.Settings, "主界面");
+        Closing += (_, _) => WindowPositions.Save(this, host.Settings, "主界面");
     }
 
     public void OpenTools() => Dispatcher.Invoke(() => Show(ref _tools, () => new ToolsWindow(_host)));

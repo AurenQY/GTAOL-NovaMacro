@@ -159,7 +159,7 @@ public class SettingsStoreTests
     }
 
     [Fact]
-    public void ConcurrentReadsDuringWritesAreSafe()
+    public async Task ConcurrentReadsDuringWritesAreSafe()
     {
         var store = new SettingsStore(new IniDocument());
         var stop = false;
@@ -177,7 +177,7 @@ public class SettingsStoreTests
         }
 
         Volatile.Write(ref stop, true);
-        reader.Wait();
+        await reader;
         Assert.Equal(24, store.GetInt(Sec.WeaponJam, "按键延迟"));
     }
 

@@ -54,7 +54,49 @@ public sealed class AudioLevelMonitor : IAudioLevelMonitor, IDisposable
         Volatile.Write(ref _level, 0);
     }
 
-    public void Dispose() => Stop();
+    private readonly List<AudioSessionControl> _muted = new();
+
+    public void MuteOtherProcesses(int keepProcessId, bool mute)
+    {
+        try
+        {
+            if (!mute)
+            {
+                foreach (var session in _muted)
+                {
+                    session.SimpleAudioVolume.Mute = false;
+                }
+
+                _muted.Clear();
+                return;
+            }
+
+            using var enumerator = new MMDeviceEnumerator();
+            var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            var sessions = device.AudioSessionManager.Sessions;
+            for (var i = 0; i < sessions.Count; i++)
+            {
+                var session = sessions[i];
+                var pid = (int)session.GetProcessID;
+                if (pid == 0 || pid == keepProcessId || pid == Environment.ProcessId || session.SimpleAudioVolume.Mute)
+                {
+                    continue;
+                }
+
+                session.SimpleAudioVolume.Mute = true;
+                _muted.Add(session);
+            }
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        MuteOtherProcesses(0, false);
+        Stop();
+    }
 
     private void OnData(object? sender, WaveInEventArgs e)
     {

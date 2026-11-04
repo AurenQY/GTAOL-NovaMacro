@@ -196,6 +196,7 @@ public class SteamLinkTests
         Assert.Equal("增强版战局", link.EditionName);
         Assert.Equal(new DateTime(2026, 1, 2, 3, 4, 5), link.ObtainedAt);
         Assert.Equal("测试BOT", link.Nickname);
+        Assert.Equal("steam://rungame/3240220/76561190000000000/-steamjvp%3DQUJDRA%3D%3D", link.LaunchUrl);
         Assert.Null(SteamJoinLink.FromJson(""));
     }
 

@@ -21,6 +21,7 @@ public sealed class GameToolsService : IGameTools, IDisposable
     private string? _cutMethod;
     private CancellationTokenSource? _reconnect;
     private CancellationTokenSource? _solo;
+    private Action? _soloFinish;
     private bool _speedLimited;
     private bool _sessionLocked;
 
@@ -80,6 +81,12 @@ public sealed class GameToolsService : IGameTools, IDisposable
                     {
                         try
                         {
+                            // Names like "Launcher" are generic: only kill Rockstar's own executables.
+                            if (!IsRockstarProcess(p))
+                            {
+                                continue;
+                            }
+
                             p.Kill(true);
                         }
                         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
@@ -92,6 +99,26 @@ public sealed class GameToolsService : IGameTools, IDisposable
 
         _notifier.Beep(false);
         return Done(ToolResult.Ok("[结束进程] 已结束进程！"));
+    }
+
+    private static bool IsRockstarProcess(Process p)
+    {
+        try
+        {
+            var path = p.MainModule?.FileName;
+            return path is not null && path.Contains("Rockstar", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Firewall rules have no effect on a profile whose firewall is turned off.</summary>
+    private static string FirewallWarning()
+    {
+        var off = FirewallService.ProfileStates().Where(kv => !kv.Value).Select(kv => kv.Key).ToList();
+        return off.Count == 0 ? string.Empty : $"（注意：{string.Join("、", off)}的防火墙未启用，规则在这些网络上无效；可在小工具中启用防火墙或改用 WFP规则断网）";
     }
 
     // ---------------- 游戏断网 ----------------
@@ -164,7 +191,7 @@ public sealed class GameToolsService : IGameTools, IDisposable
                     }
                 }
 
-                result = ToolResult.Ok($"[游戏断网] 操作成功：已创建【{rule}】规则！{NetworkRules.Describe(rule)}");
+                result = ToolResult.Ok($"[游戏断网] 操作成功：已创建【{rule}】规则！{NetworkRules.Describe(rule)}" + (method == "WFP规则断网" ? string.Empty : FirewallWarning()));
             }
 
             _cutMethod = method;
@@ -314,6 +341,15 @@ public sealed class GameToolsService : IGameTools, IDisposable
                 text = "[游戏卡单] 正在进行模拟窗口菜单卡单";
             }
 
+            var ended = 0;
+            var finish = () =>
+            {
+                if (Interlocked.Exchange(ref ended, 1) == 0)
+                {
+                    end();
+                }
+            };
+            _soloFinish = finish;
             begin();
             _notifier.Beep(true);
             StateChanged?.Invoke(this, EventArgs.Empty);
@@ -335,10 +371,11 @@ public sealed class GameToolsService : IGameTools, IDisposable
                 }
                 finally
                 {
-                    end();
+                    finish();
                     lock (_gate)
                     {
                         _solo = null;
+                        _soloFinish = null;
                     }
 
                     _notifier.Beep(false);
@@ -418,7 +455,7 @@ public sealed class GameToolsService : IGameTools, IDisposable
 
             _sessionLocked = true;
             _notifier.Beep(true);
-            return Done(ToolResult.Ok("[战局锁单] 已创建 GTA5战局锁单 规则！规则仅阻止玩家链接！注意：锁单期间你无法Home差传。"));
+            return Done(ToolResult.Ok("[战局锁单] 已创建 GTA5战局锁单 规则！规则仅阻止玩家链接！注意：锁单期间你无法Home差传。" + (useWfp ? string.Empty : FirewallWarning())));
         }
     }
 
@@ -497,10 +534,14 @@ public sealed class GameToolsService : IGameTools, IDisposable
         return null;
     }
 
-    /// <summary>Removes every rule NovaMacro may have left behind (startup/exit cleanup).</summary>
+    /// <summary>
+    /// Restores everything NovaMacro changed (exit). Resuming a suspended game is done synchronously:
+    /// the app may terminate right after this call.
+    /// </summary>
     public void CleanupAll()
     {
         _reconnect?.Cancel();
+        _soloFinish?.Invoke();
         _solo?.Cancel();
         if (_disabledAdapter is not null)
         {
@@ -508,8 +549,16 @@ public sealed class GameToolsService : IGameTools, IDisposable
             _disabledAdapter = null;
         }
 
-        FirewallService.Delete(NetworkRules.CutRuleName);
-        FirewallService.Delete(NetworkRules.LockRuleName);
+        if (_cutMethod is not null && _cutMethod != "WFP规则断网")
+        {
+            FirewallService.Delete(NetworkRules.CutRuleName);
+        }
+
+        if (_sessionLocked)
+        {
+            FirewallService.Delete(NetworkRules.LockRuleName);
+        }
+
         if (_speedLimited)
         {
             RemoveQos();
@@ -519,6 +568,16 @@ public sealed class GameToolsService : IGameTools, IDisposable
         _cutMethod = null;
         _sessionLocked = false;
         _speedLimited = false;
+    }
+
+    /// <summary>
+    /// Removes rules/policies a previous run may have left behind after a crash (startup, background).
+    /// </summary>
+    public void CleanupStale()
+    {
+        FirewallService.Delete(NetworkRules.CutRuleName);
+        FirewallService.Delete(NetworkRules.LockRuleName);
+        RemoveQos();
     }
 
     public void Dispose() => CleanupAll();

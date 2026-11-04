@@ -54,7 +54,8 @@ public sealed record FeatureDefinition(
     string? HotkeySection,
     Hotkey DefaultHotkey,
     string Help,
-    string? SettingsSection = null);
+    string? SettingsSection = null,
+    string? HotkeyKey = null);
 
 public static class FeatureCatalog
 {
@@ -67,7 +68,7 @@ public static class FeatureCatalog
         new(FeatureId.MenuSnack, "菜单零食", FeatureGroup.Macro, "菜单零食", false, "列表零食热键", new Hotkey(InputCodes.Letter('F'), ModifierMask.Alt),
             "单击热键吃设定个数的零食（个数为0时按住持续吃）\n按住特殊触发键并触发热键则穿戴防弹衣", "菜单零食设置"),
         new(FeatureId.VehicleControl, "载具启动", FeatureGroup.Macro, "载具启动", false, "载具启动热键", new Hotkey(InputCodes.Letter('V'), ModifierMask.Alt),
-            "单击叫出个人载具，双击收回\n按住辅助触发键（如大写键）单击热键执行设定的引擎/车门控制", "菜单零食设置"),
+            "单击热键执行设定的载具操作（默认控制引擎）\n按住辅助触发键（如大写键）单击热键可把载具收回，双击则叫出", "菜单零食设置"),
         new(FeatureId.ServiceVehicle, "呼叫载具", FeatureGroup.Macro, "服务载具", true, "呼叫载具热键", new Hotkey(InputCodes.Letter('B'), ModifierMask.Alt),
             "单击呼叫，双击收回，也可在设置调整轮换的服务载具\n按住辅助触发键（如大写键）单击热键来轮换载具", "菜单零食设置"),
         new(FeatureId.QuickPerspective, "快速人称", FeatureGroup.Macro, "快速人称", false, "快速人称热键", new Hotkey(InputCodes.Letter('V'), ModifierMask.Ctrl),
@@ -107,12 +108,12 @@ public static class FeatureCatalog
         new(FeatureId.Crosshair, "外置准星", FeatureGroup.Macro, "外置准星", false, "外置准星热键", new Hotkey(InputCodes.Letter('Z'), ModifierMask.Ctrl),
             "Ctrl + Z热键显示/隐藏准星\n游戏界面改变则重新开启准星以改变对应大小和位置", "外置准星设置"),
 
-        new(FeatureId.KillGame, "结束进程", FeatureGroup.Tool, null, true, "结束进程热键", new Hotkey(InputCodes.Function(5), ModifierMask.Ctrl), "强制结束游戏进程", "小工具配置"),
-        new(FeatureId.NetworkCut, "游戏断网", FeatureGroup.Tool, null, true, "游戏断网热键", new Hotkey(InputCodes.Function(6), ModifierMask.Ctrl), "对游戏断网/恢复网络", "小工具配置"),
-        new(FeatureId.SoloSession, "游戏卡单", FeatureGroup.Tool, null, true, "游戏卡单热键", new Hotkey(InputCodes.Function(7), ModifierMask.Ctrl), "暂停游戏数秒以卡出单人战局", "小工具配置"),
-        new(FeatureId.SessionLock, "战局锁单", FeatureGroup.Tool, null, true, "战局锁单热键", new Hotkey(InputCodes.Function(8), ModifierMask.Ctrl),
-            "规则仅阻止玩家链接！注意：锁单期间你无法Home差传", "小工具配置"),
-        new(FeatureId.SpeedLimit, "游戏限速", FeatureGroup.Tool, null, true, "游戏限速热键", new Hotkey(InputCodes.Function(9), ModifierMask.Ctrl | ModifierMask.Shift), "使用系统 QoS 策略限制游戏网速", "小工具配置"),
+        new(FeatureId.KillGame, "结束进程", FeatureGroup.Tool, null, true, "小工具配置", new Hotkey(InputCodes.Function(5), ModifierMask.Ctrl), "强制结束游戏进程", "小工具配置", "结束进程热键"),
+        new(FeatureId.NetworkCut, "游戏断网", FeatureGroup.Tool, null, true, "小工具配置", new Hotkey(InputCodes.Function(6), ModifierMask.Ctrl), "对游戏断网/恢复网络", "小工具配置", "游戏断网热键"),
+        new(FeatureId.SoloSession, "游戏卡单", FeatureGroup.Tool, null, true, "小工具配置", new Hotkey(InputCodes.Function(7), ModifierMask.Ctrl), "暂停游戏数秒以卡出单人战局", "小工具配置", "游戏卡单热键"),
+        new(FeatureId.SessionLock, "战局锁单", FeatureGroup.Tool, null, true, "小工具配置", new Hotkey(InputCodes.Function(8), ModifierMask.Ctrl),
+            "规则仅阻止玩家链接！注意：锁单期间你无法Home差传", "小工具配置", "战局锁单热键"),
+        new(FeatureId.SpeedLimit, "游戏限速", FeatureGroup.Tool, null, true, "小工具配置", new Hotkey(InputCodes.Function(9), ModifierMask.Ctrl | ModifierMask.Shift), "使用系统 QoS 策略限制游戏网速", "小工具配置", "游戏限速热键"),
 
         new(FeatureId.StopAll, "一键停止", FeatureGroup.System, null, true, "一键停止宏热键", new Hotkey(InputCodes.Pause),
             "单击停止按键宏操作，长按锁定/解锁按键宏"),

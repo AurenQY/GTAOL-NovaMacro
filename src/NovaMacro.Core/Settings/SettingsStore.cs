@@ -148,19 +148,30 @@ public sealed class SettingsStore
             return feature.DefaultHotkey;
         }
 
+        if (feature.HotkeyKey is { } prefix)
+        {
+            // Original layout: [小工具配置] 结束进程热键=… / 结束进程热键功能键=… / 结束进程热键副键=…
+            // (falls back to the section layout used by NovaMacro 2.0 builds before this change).
+            return ReadHotkey(feature.HotkeySection, null, prefix) ?? ReadHotkey(prefix, feature.DefaultHotkey);
+        }
+
         return ReadHotkey(feature.HotkeySection, feature.DefaultHotkey);
     }
 
-    public Hotkey ReadHotkey(string section, Hotkey fallback)
+    public Hotkey ReadHotkey(string section, Hotkey fallback) => ReadHotkey(section, (Hotkey?)fallback, null) ?? fallback;
+
+    private Hotkey? ReadHotkey(string section, Hotkey? fallback, string? prefix)
     {
-        var key = _document.Get(section, "键") ?? _defaults.Get(section, "键");
+        var keyName = prefix ?? "键";
+        var key = _document.Get(section, keyName) ?? _defaults.Get(section, keyName);
         if (key is null || !int.TryParse(key, out var code))
         {
             return fallback;
         }
 
-        var modifiers = int.TryParse(_document.Get(section, "功能键") ?? _defaults.Get(section, "功能键"), out var m) ? m : 0;
-        var secondary = int.TryParse(_document.Get(section, "副键") ?? _defaults.Get(section, "副键"), out var s) ? s : 0;
+        var p = prefix ?? string.Empty;
+        var modifiers = int.TryParse(_document.Get(section, p + "功能键") ?? _defaults.Get(section, p + "功能键"), out var m) ? m : 0;
+        var secondary = int.TryParse(_document.Get(section, p + "副键") ?? _defaults.Get(section, p + "副键"), out var s) ? s : 0;
         return new Hotkey(code, (ModifierMask)(modifiers & 7), secondary);
     }
 
@@ -171,9 +182,10 @@ public sealed class SettingsStore
             return;
         }
 
-        Set(feature.HotkeySection, "键", hotkey.Key.ToString(CultureInfo.InvariantCulture));
-        Set(feature.HotkeySection, "功能键", ((int)hotkey.Modifiers).ToString(CultureInfo.InvariantCulture));
-        Set(feature.HotkeySection, "副键", hotkey.Secondary.ToString(CultureInfo.InvariantCulture));
+        var p = feature.HotkeyKey ?? string.Empty;
+        Set(feature.HotkeySection, feature.HotkeyKey ?? "键", hotkey.Key.ToString(CultureInfo.InvariantCulture));
+        Set(feature.HotkeySection, p + "功能键", ((int)hotkey.Modifiers).ToString(CultureInfo.InvariantCulture));
+        Set(feature.HotkeySection, p + "副键", hotkey.Secondary.ToString(CultureInfo.InvariantCulture));
     }
 
     public void ResetSection(string section)

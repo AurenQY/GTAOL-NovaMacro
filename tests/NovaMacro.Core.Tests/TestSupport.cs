@@ -222,9 +222,17 @@ public sealed class Harness
             Urls = Urls,
             DataFolder = Path.Combine(Path.GetTempPath(), "novamacro-tests-" + Guid.NewGuid().ToString("N")),
             Keys = () => Keys,
+            ToolsWindowOpen = () => ToolsOpen,
+            ExecutionActive = active => Interlocked.Add(ref _executing, active ? 1 : -1),
         };
         Runtime = new MacroRuntime(Services, FeatureFactory.CreateBuiltIn());
     }
+
+    private int _executing;
+
+    public bool ToolsOpen { get; set; }
+
+    public int Executing => Volatile.Read(ref _executing);
 
     public SettingsStore Settings { get; }
 

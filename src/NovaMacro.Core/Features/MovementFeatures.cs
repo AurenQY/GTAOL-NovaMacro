@@ -83,17 +83,38 @@ public sealed class SprintToggleFeature : MacroFeature
         Start(ctx =>
         {
             ctx.Tip("[奔跑切换] 已切换为按住奔跑");
-            ctx.Input.Down(GameAction.Sprint);
+            // Hold sprint only while GTA is in the foreground, otherwise a stuck Shift would leak into
+            // other applications after Alt+Tab.
+            var held = false;
             try
             {
                 while (_sprinting)
                 {
+                    var foreground = ctx.Services.Game.IsForeground;
+                    if (foreground != held)
+                    {
+                        if (foreground)
+                        {
+                            ctx.Input.Down(GameAction.Sprint);
+                        }
+                        else
+                        {
+                            ctx.Input.Up(GameAction.Sprint);
+                        }
+
+                        held = foreground;
+                    }
+
                     ctx.Wait(-50);
                 }
             }
             finally
             {
-                ctx.Input.Up(GameAction.Sprint);
+                if (held)
+                {
+                    ctx.Input.Up(GameAction.Sprint);
+                }
+
                 _sprinting = false;
             }
         });

@@ -151,7 +151,8 @@ public sealed class WeaponJamFeature : MacroFeature
         var interval = IntervalFor(weapon);
         var fireFirst = ctx.Settings.GetString(Sec.WeaponJam, "自动速射开火顺序") != "先切枪后开火";
         var endMode = ctx.Settings.GetString(Sec.WeaponJam, "宏结束操作");
-        ctx.Log($"投掷武器键：{KeyNames.GetName(ctx.Settings.GetInt(Sec.WeaponJam, "投掷武器键位"))} | 自动速射间隔：{interval} | 宏模式：自动速射 | 欲切枪武器键：{weapon}");
+        var throwKey = ctx.Settings.GetInt(Sec.WeaponJam, "投掷武器键位");
+        ctx.Log($"投掷武器键：{KeyNames.GetName(throwKey == InputCodes.None ? ctx.Input.Code(GameAction.WeaponThrowable) : throwKey)} | 自动速射间隔：{interval} | 宏模式：自动速射 | 欲切枪武器键：{weapon}");
         var first = true;
         while (first || HotkeyHeld)
         {

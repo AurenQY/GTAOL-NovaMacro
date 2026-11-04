@@ -177,6 +177,7 @@ public abstract class MacroFeature
 
     private void Execute(Action<MacroContext> body, MacroContext context, CancellationTokenSource cts)
     {
+        S.ExecutionActive?.Invoke(true);
         try
         {
             ReleaseHotkeyModifiers(context);
@@ -191,6 +192,7 @@ public abstract class MacroFeature
         }
         finally
         {
+            S.ExecutionActive?.Invoke(false);
             try
             {
                 OnStopped();

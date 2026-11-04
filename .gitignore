@@ -2,4 +2,6 @@
 **/bin/
 **/obj/
 TestResults/
-data/settings.json
+publish/
+NovaMacro Config/
+*.user

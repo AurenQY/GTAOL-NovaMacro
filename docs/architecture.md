@@ -1,221 +1,37 @@
-# Current V1 architecture
+# 架构
 
-## Design principles
-
-- Keep macro execution independent from WPF and Win32 lifecycle code.
-- Keep native calls and Windows message/hook ownership out of the UI layer.
-- Use narrow internal seams only for real execution or deterministic-test
-  boundaries.
-- Compose the application manually; V1 does not need a dependency-injection or
-  MVVM framework.
-- Treat editor drafts, saved settings, and the active startup runtime as three
-  separate states.
-- Keep fixed-sequence automation simple until a new product requirement proves
-  that another abstraction is needed.
-
-## Project boundaries
-
-### `NovaMacro.Core`
-
-Core owns the platform-independent macro model and execution rules:
-
-- `MacroSequence` and `MacroStep`;
-- `KeyTapStep`, `DelayStep`, and `MouseButtonTapStep`;
-- keyboard and mouse output vocabularies;
-- `IKeyboardOutput`, `IMouseOutput`, and `IDelay` boundaries;
-- `MacroRunner`, including ordered execution, cancellation cleanup, and
-  per-runner non-reentrancy.
-
-`BuiltInMacroSequences.AbcTest` remains a technical test helper, not a current
-factory product macro. Core does not reference WPF or Win32.
-
-### `NovaMacro.Windows`
-
-Windows adapts Core output and global triggers to Win32:
-
-- `WindowsKeyboardOutput` and `WindowsMouseOutput` use `SendInput`;
-- `WindowsGlobalHotkeyService` owns `RegisterHotKey`, `WM_HOTKEY`, physical
-  release gating, and its message thread;
-- `WindowsGlobalKeyboardFallbackService` owns the shared `WH_KEYBOARD_LL`
-  observation fallback used only for `RegisterHotKey` collision error 1409;
-- `WindowsGlobalMouseButtonService` owns the low-level XButton hook and
-  Mouse4/Mouse5 press/release events;
-- registered XButtons are swallowed globally, while unregistered XButtons are
-  forwarded;
-- narrow internal native/scheduler seams support deterministic tests.
-
-Windows references Core but not App or WPF. These seams are test boundaries,
-not plugins or a general platform framework.
-
-### `NovaMacro.App`
-
-App is the WPF host and composition root. It owns:
-
-- `SingleInstanceGuard`;
-- the canonical zero-to-32 macro configuration domain;
-- validation, JSON V1/V2/V3 compatibility, and the portable settings store;
-- `StartupConfigurationCoordinator` and status presentation;
-- `MainWindow`, the multi-macro editor draft/control, and save coordination;
-- `MultiMacroHotkeyCoordinator`, registration ownership, global execution
-  admission, and held-mouse iteration policy;
-- construction and shutdown of Windows services and the shared runner.
-
-App contains no P/Invoke and does not reimplement input execution.
-
-### `NovaMacro.Tests`
-
-Tests reference all three production projects. Controlled native APIs,
-schedulers, delays, and outputs make concurrency and lifecycle tests
-deterministic. Real-Windows and human checks cover the boundaries that fakes
-cannot prove, including actual input, global registration, GTA behavior, and
-the final WPF layout.
-
-## Dependency direction
-
-```text
-NovaMacro.App ───────► NovaMacro.Windows ───────► NovaMacro.Core
-      └────────────────────────────────────────► NovaMacro.Core
-
-NovaMacro.Tests ─────► NovaMacro.App / NovaMacro.Windows / NovaMacro.Core
+```
+NovaMacro.App (WPF)            界面、组合根 AppHost、覆盖层、托盘
+   │
+   ├── NovaMacro.Platform      Windows：SendInput、低级钩子、XInput、窗口跟踪、截图、
+   │                           netsh/WFP/QoS、进程暂停、ETW 帧率、WASAPI
+   │
+   └── NovaMacro.Core          平台无关：设置、运行时、功能、求解器、协议
 ```
 
-Core never depends on Windows, App, or Tests. Windows never depends on App or
-WPF.
+## 数据流
 
-## Canonical configuration
+1. `GlobalInputHook` 在独立消息循环线程上接收物理（非注入）键鼠事件和 XInput 手柄按钮，
+   维护按下状态，并同步调用 `MacroRuntime.HandleInput(code, down, repeat)`；返回 `true` 时吞掉事件。
+2. `MacroRuntime`：
+   - 读取每个功能的热键（`<功能>热键` 节的 键/功能键/副键）与开关（`[记忆开关]`），在设置变化时刷新；
+   - 过滤：游戏前台、输入法检测、锁定/白名单；
+   - 热键匹配：修饰键最“具体”的组合优先；带修饰键的热键会吞掉主键；
+   - 需要单击/双击/长按区分的功能通过 `ClickClassifier` 得到手势（每 15ms `Tick` 轮询）；
+   - 原始输入也会交给每个功能的 `OnInput`（AD 偷速、切换战局、替代回车等组合触发）。
+3. 功能在自己的工作线程中运行（`MacroFeature.Start`），同一功能不会重入；一键停止取消所有令牌并释放所有按键。
+4. 功能通过 `GameInput` 以“游戏动作”发送按键（`GameAction` → 用户 GTA 键位），
+   延时经过 `DelayProvider`（>0 受自适应延时约束，0 不延时，<0 绝对延时）。
+5. 菜单类宏全部由 `[M菜单布局]` 中的路径驱动（`MenuPath` 解析，`MenuRunner` 执行）。
 
-```text
-ApplicationSettings
-└─ Macros (0..32)
-   └─ MacroDefinition
-      ├─ MacroId
-      ├─ Name
-      ├─ Enabled
-      ├─ MacroTrigger
-      ├─ MacroExecutionMode
-      └─ MacroSequence
-```
+## 设置
 
-`MacroTrigger` separates keyboard hotkeys from Mouse4/Mouse5 buttons. Trigger
-keys and output keys deliberately use different vocabularies. Macro identity is
-a stable `MacroId`; names are editable labels, not identifiers.
+- `SettingsSchema` 声明每个键的类型、默认值、范围、说明，设置界面由它自动生成。
+- 取值顺序：`Settings.ini` → 内置默认（作者的 Settings.ini）→ 模式默认值。
+- 布尔值沿用原软件的 `真/假`。
 
-## Startup decision flow
+## 系统工具的安全性
 
-```text
-App.OnStartup
-    │
-    ▼
-SingleInstanceGuard
-    │ primary instance only
-    ▼
-JsonSettingsStore.Load (once)
-    │
-    ▼
-StartupConfigurationCoordinator
-    ├─ Missing ─────► four GTA factory macros in editor + runtime
-    ├─ Loaded ──────► saved editor + same saved runtime
-    ├─ Invalid ─────► empty recovery editor + no runtime
-    └─ Unavailable ─► empty recovery editor + no runtime
-```
-
-Startup never saves. Missing settings remain missing until an explicit Save.
-Existing V1, V2, V3, and valid empty settings are authoritative and never
-receive factory-macro injection. Invalid or unavailable data is not silently
-overwritten.
-
-The factory macros are ordinary `MacroDefinition` objects with fresh,
-non-legacy IDs. They have no persisted origin marker, lock, badge, or automatic
-restore behavior.
-
-## Registration and runtime flow
-
-```text
-immutable startup settings
-    │ enabled macros
-    ▼
-MultiMacroHotkeyCoordinator
-    ├─ keyboard trigger ─► WindowsGlobalHotkeyService
-    │                       └─ error 1409 only
-    │                          ─► WindowsGlobalKeyboardFallbackService
-    └─ Mouse4/Mouse5 ────► WindowsGlobalMouseButtonService
-                              │
-                              ▼
-                    synchronous global admission
-                              │ accepted only if idle
-                              ▼
-                         MacroRunner
-                              │
-                              ▼
-          WindowsKeyboardOutput / WindowsMouseOutput
-                              │
-                              ▼
-                  current foreground application
-```
-
-One coordinator-level owner covers keyboard `Once`, mouse `Once`, and mouse
-`RepeatWhileHeld` work. A trigger received while busy is dropped synchronously:
-no worker is queued and no delayed retry occurs.
-
-For `RepeatWhileHeld`, an accepted press always receives one complete
-iteration. A continuing hold starts further iterations serially. Release is
-soft: it finishes the current iteration and prevents the next one. The global
-owner remains held between iterations.
-
-## Factory product configuration
-
-Only genuinely missing settings create these enabled macros, in order:
-
-1. Buy All Ammo — `Alt+R`, `Once`.
-2. Drop Bull Shark — `Alt+E`, `Once`.
-3. Request Sparrow — `Ctrl+Alt+H`, `Once`.
-4. Heavy Weapon Rapid Fire — `Mouse4`, `RepeatWhileHeld`.
-
-The catalog is internal factory-data infrastructure. The main UI does not
-expose a preset selector or Add-from-preset workflow.
-
-## Persistence and save flow
-
-`JsonSettingsStore` uses
-`AppContext.BaseDirectory/data/settings.json`. It reads V1, V2, and V3; current
-saves write V3. Older versions migrate in memory and are not rewritten merely
-because they were loaded.
-
-```text
-MainWindow draft
-    ▼ validate
-MacroEditorSaveCoordinator
-    ▼
-JsonSettingsStore.Save (V3)
-```
-
-Save replaces the file but never reconfigures the running coordinator. If
-startup loaded A, saving B leaves runtime A active until the next launch.
-
-## Failure and shutdown
-
-Registration failures are reported per macro. Partial and zero-registration
-states keep the editor usable, while terminal service failures preserve whether
-the failure occurred during initial startup or after a previously active
-runtime.
-
-Shutdown closes trigger admission, cancels owned work, disposes all active global
-trigger services, waits for tracked macro tasks, and releases the
-single-instance guard late in application shutdown.
-
-## Windows behavior and limitations
-
-`SendInput` targets whichever application is foreground for each event.
-NovaMacro neither chooses nor validates a GTA window.
-
-Keyboard trigger policy allows F1-F11 and supported numpad keys without
-modifiers; A-Z requires at least one of Control, Alt, or Shift. NumpadEnter is
-an output key but is not exposed as a distinct trigger. Mouse4/Mouse5 triggers
-are global and intentionally have no GTA foreground filter in V1.
-
-Keyboard hotkeys first use Windows `RegisterHotKey`. Only an
-`ERROR_HOTKEY_ALREADY_REGISTERED` (1409) collision activates the shared
-low-level keyboard observation fallback. The fallback observes and forwards
-input rather than taking exclusive ownership, so the application that already
-owns the shortcut may also react. It does not bypass Windows security or add a
-GTA foreground filter.
+- WFP 规则使用动态会话：NovaMacro 退出（包括崩溃）时过滤器自动删除。
+- 防火墙规则、QoS 策略在启动和退出时都会清理（`GameToolsService.CleanupAll`）。
+- 游戏卡单使用 `NtSuspendProcess`，到时或再次触发必定 `NtResumeProcess`。

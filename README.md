@@ -1,88 +1,68 @@
-# NovaMacro
+# NovaMacro 2.0
 
-NovaMacro is a Windows x64 C#/.NET 10 WPF utility for configurable,
-fixed-sequence keyboard and mouse input automation. Version 1 is currently
-configured around a small set of GTA Online convenience macros, while keeping
-each macro editable as ordinary user configuration.
+NovaMacro 是一个面向 GTA Online（传承版 `GTA5.exe` / 增强版 `GTA5_Enhanced.exe`）的 Windows 按键宏与小工具集合。
+2.0 版本以 **GTAOL 按键宏 7.6.5** 的功能为蓝本，从底层完全重写（C# / .NET 10 / WPF），并以作者自己的
+`Settings.ini` 作为出厂默认配置。
 
-## Factory macros
+> NovaMacro 只模拟键盘/鼠标输入、读取屏幕像素、调用系统防火墙/WFP/QoS 等系统功能，**不读写游戏内存、不注入代码**。
+> 是否使用、如何使用请自行判断并承担相应风险。
 
-When `data/settings.json` is genuinely missing, NovaMacro starts in memory with
-four enabled macros:
+## 功能一览
 
-| Macro | Trigger |
+| 类别 | 功能 |
 | --- | --- |
-| Buy All Ammo | `Alt+R` |
-| Drop Bull Shark | `Alt+E` |
-| Request Sparrow | `Ctrl+Alt+H` |
-| Heavy Weapon Rapid Fire | `Mouse4` |
+| 武器 | 武器卡弹 / 自动速射（默认模式、自动速射、单次切枪、开火激活；按武器独立模式与间隔；键位/轮盘切换）、切枪偷速、连续左键、快速零食（轮盘） |
+| M 菜单 | 买满子弹（全部 / 当前武器）、菜单零食与防弹衣、载具启动（叫出/收回/引擎/车门）、呼叫服务载具（单击呼叫、双击送回、长按内部载具、辅助键轮换） |
+| 移动 | AD 偷速、奔跑切换、延迟攀爬（自动相机）、瞬间悬停（可断网悬停）、快速人称 |
+| 战局 | 切换战局（暂停键 + 1/2/3 或 ←/↓/→）、地图差传（BOT 法 / 读秒法 / 听声法，Steam 战局链接或好友列表点击加入）、任务卡传（快速加入差事 + 注册 CEO/摩托帮） |
+| 抢劫 | 赌场指纹自动匹配、佩里科岛指纹自动匹配、自动梅杜莎（小地图紫色标点自动飞行） |
+| 其他 | 替代回车、挂机 / 空闲挂机、内置截图、外置准星、电话呼叫、自定义宏（脚本 + 分类 + 热键 + 循环） |
+| 小工具 | 结束进程、游戏断网（防火墙规则 / WFP 规则 / 禁用网卡；QuellGTA 式规则：全部 / 存档 / 云存档 / 交易；自动重连）、游戏卡单（进程暂停 / 窗口菜单 / 模拟窗口菜单）、战局锁单（UDP 6672）、游戏限速（QoS，含加速器）、战局锁（startup.meta 密码战局）、防火墙状态、联动房间（断网/卡单/断进程同步）、HUD 提示与计时器 |
+| 系统 | 一键停止（单击停止、长按锁定）、宏锁定白名单、输入法检测防误触、释放 WIN 键、同步退出、开机启动、高精度延时、自适应延时（ETW 帧率）、调试输出窗口与日志 |
 
-Heavy Weapon Rapid Fire performs one iteration for a quick Mouse4 tap. Holding
-Mouse4 repeats iterations serially; releasing it lets the current iteration
-finish and prevents another from starting.
+完整的“原软件功能 → NovaMacro 实现”对照与差异说明见 [docs/feature-parity.md](docs/feature-parity.md)。
 
-These factory-created macros are not locked templates. Users may edit, rename,
-disable, delete, or change their triggers, steps, and delays. Once a
-configuration has been saved, it is authoritative: deleted factory macros are
-not automatically restored.
+## 配置
 
-## Important runtime behavior
+- 所有数据都集中在程序目录下的 `NovaMacro Config\` 文件夹：
+  - `Settings.ini`：与原软件相同的节/键名称（`[武器卡弹设置]`、`[小工具配置]`、`[记忆开关]`…）。
+    原软件的 GBK 编码 `Settings.ini` 可以直接复制进来使用；NovaMacro 保存时使用 UTF-8（带 BOM）。
+  - `CustomMacro\<分类>\<名称>.xml`：自定义宏。
+  - `MapTeleportBot\BOT1.BMP`、`JOIN.BMP`：Steam 点击加入的参考图片。
+  - `调试日志.txt`：开启“保存日志”后写入。
+- 首次运行时，`Settings.ini` 由内置默认配置（即作者提供的配置）生成，包括两个 Steam BOT 战局链接、
+  武器卡弹自动速射 700ms、卡单 8 秒、限速 1000、联动 `127.0.0.1:19730` 等。
+- 游戏键位会自动从 `文档\Rockstar Games\GTA V Enhanced(或 GTA V)\Profiles\*\control\user.xml` 读取，
+  也可以在“按键宏设置 → 游戏键位”中逐项覆盖。
+- M 菜单 / 暂停菜单的导航全部是可编辑的“路径”（`[M菜单布局]`），例如
+  `M,↓{生命值与弹药位置},确认,↓{弹药子菜单位置},确认,←,↓,确认,M`，游戏菜单变化时无需改代码。
 
-- NovaMacro sends input to whichever application is currently foreground. Make
-  sure GTA is foreground before triggering a GTA macro.
-- NovaMacro first uses ordinary Windows global hotkey registration. If another
-  application already owns the same keyboard hotkey, NovaMacro can fall back to
-  non-exclusive keyboard observation; both applications may then react to that
-  shortcut.
-- When an enabled macro owns Mouse4 or Mouse5, NovaMacro globally captures that
-  button while the runtime is active. V1 does not filter triggers by the
-  foreground GTA process.
-- Only one macro executes at a time. A trigger received while another macro is
-  running is dropped rather than queued.
-- Saving does not live-apply. Saved changes become active after NovaMacro is
-  restarted.
+## 构建与测试
 
-## Configuration and settings
-
-The editor supports up to 32 macros, keyboard or Mouse4/Mouse5 triggers,
-`Once` and mouse `RepeatWhileHeld` execution, keyboard taps, left-mouse taps,
-delays, and step reordering.
-
-Settings are stored portably at `data/settings.json` below the application
-directory. NovaMacro reads legacy JSON V1/V2 settings and the current V3 schema;
-new saves use V3. Loading an older file does not rewrite it automatically.
-Factory defaults appear only for a genuinely missing file, not for an existing
-empty, invalid, or unavailable configuration.
-
-## Build and test
-
-Prerequisites for building from source:
-
-- Windows x64
-- .NET 10 SDK
+需要 .NET 10 SDK。WPF/Win32 部分只能在 Windows 上运行，但整个解决方案可以在任何系统上编译
+（`EnableWindowsTargeting`），核心逻辑测试可以在 Linux/macOS 上运行。
 
 ```powershell
-dotnet build NovaMacro.sln --configuration Release
-dotnet test NovaMacro.sln --configuration Release --no-build
-dotnet run --project src/NovaMacro.App/NovaMacro.App.csproj --configuration Release
+dotnet build NovaMacro.sln -c Release
+dotnet test tests/NovaMacro.Core.Tests -c Release
+dotnet run --project src/NovaMacro.App -c Release
 ```
 
-Current verified baseline: Release build with 0 warnings and 0 errors; 1008
-automated tests passed with 0 failures and 0 skipped. Real Windows input,
-hotkey, first-run, persistence, single-instance, GTA functional, and compact UI
-flows have also been validated.
+发布（输出到 `publish\` 文件夹，需目标电脑已安装 .NET 10 桌面运行时）：
 
-## Repository structure
+```powershell
+dotnet publish src/NovaMacro.App -c Release -r win-x64 --self-contained false -o publish
+```
 
-- `NovaMacro.Core`: platform-independent macro model and execution engine.
-- `NovaMacro.Windows`: Win32 hotkey, mouse-hook, and `SendInput` integration.
-- `NovaMacro.App`: WPF editor, configuration, persistence, startup composition,
-  and runtime ownership.
-- `NovaMacro.Tests`: deterministic Core, Windows, App, persistence, and UI tests.
+程序清单要求管理员权限（防火墙/WFP/QoS/进程暂停/ETW 帧率都需要）。
 
-NovaMacro does not read or modify game memory, inject game code, bypass
-anti-cheat, recognize GTA state, or guarantee compliance with any game or
-service policy. Users remain responsible for applicable rules.
+## 项目结构
 
-See the [documentation index](docs/README.md) for architecture, detailed V1
-behavior, limitations, and explicit non-goals.
+- `src/NovaMacro.Core`：与平台无关的全部逻辑——INI 与设置模式、热键/手势、宏运行时、所有功能、菜单路径、
+  自定义宏脚本、指纹求解、自动梅杜莎、Steam 链接、战局锁、联动房间协议。
+- `src/NovaMacro.Platform`：Windows 实现——`SendInput`（扫描码）、低级键鼠钩子 + XInput、游戏窗口跟踪、
+  GDI 截图、netsh 防火墙、WFP 动态过滤器、QoS、进程暂停、ETW 帧率、WASAPI 音量。
+- `src/NovaMacro.App`：WPF 界面——主界面、按键宏设置（由设置模式自动生成）、小工具、自定义宏编辑器、
+  调试窗口、HUD/准星覆盖层、托盘。
+- `tests/NovaMacro.Core.Tests`：核心逻辑测试（使用假的输入/屏幕/工具实现端到端驱动功能）。
+- `docs/`：架构、功能对照、逆向分析记录。

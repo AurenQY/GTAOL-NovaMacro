@@ -1,252 +1,92 @@
-using System.Diagnostics;
 using System.Windows;
-using NovaMacro.App.Configuration;
-using NovaMacro.App.Configuration.Storage;
-using NovaMacro.App.Editor;
-using NovaMacro.App.Startup;
-using NovaMacro.Core;
-using NovaMacro.Windows;
+using NovaMacro.App.Services;
+using NovaMacro.App.Windows;
+using NovaMacro.Core.Settings;
+using Forms = System.Windows.Forms;
 
 namespace NovaMacro.App;
 
 public partial class App : Application
 {
-    private MultiMacroHotkeyCoordinator? _coordinator;
-    private SingleInstanceGuard? _instanceGuard;
-    private ApplicationSettings? _runtimeSettings;
-    private bool _isShuttingDown;
+    private Mutex? _singleInstance;
+    private Forms.NotifyIcon? _tray;
+
+    public AppHost Host { get; private set; } = null!;
+
+    public MainWindow Shell { get; private set; } = null!;
+
+    public static App Instance => (App)Current;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-
-        if (!SingleInstanceGuard.TryAcquire(
-                out SingleInstanceGuard? instanceGuard))
+        _singleInstance = new Mutex(true, "NovaMacro.SingleInstance", out var created);
+        if (!created)
         {
-            MessageBox.Show(
-                "NovaMacro is already running.",
-                "NovaMacro",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-            Shutdown(-1);
+            MessageBox.Show("已经有一个 [NovaMacro] 程序正在运行", "NovaMacro", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown();
             return;
         }
 
-        _instanceGuard = instanceGuard;
-
-        try
+        DispatcherUnhandledException += (_, args) =>
         {
-            var settingsStore = new JsonSettingsStore();
-            var startupCoordinator = new StartupConfigurationCoordinator(settingsStore);
-            StartupConfigurationResult startupConfiguration =
-                startupCoordinator.Resolve();
-            var saveCoordinator = new MacroEditorSaveCoordinator(settingsStore);
-            var mainWindow = new MainWindow(saveCoordinator, startupConfiguration);
-            MainWindow = mainWindow;
+            Host?.Log.Write("[界面] 未处理的异常：" + args.Exception.Message);
+            args.Handled = true;
+        };
 
-            if (startupConfiguration.RuntimeSettings is { } runtimeSettings)
-            {
-                ActivateRuntime(runtimeSettings, mainWindow);
-            }
+        Host = new AppHost();
+        Host.Start();
+        Shell = new MainWindow(Host);
+        Shell.Show();
+        CreateTray();
 
-            mainWindow.Show();
-        }
-        catch (Exception exception)
+        if (Host.Settings.GetBool(Sec.Tools, "默认启动"))
         {
-            DisposeRuntime();
-
-            MessageBox.Show(
-                "NovaMacro could not start.\n\n" + exception.Message,
-                "NovaMacro startup failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-            Shutdown(-1);
+            Shell.OpenTools();
         }
     }
 
-    private void ActivateRuntime(
-        ApplicationSettings runtimeSettings,
-        MainWindow mainWindow)
+    public void ExitApp()
     {
-        var keyboardOutput = new WindowsKeyboardOutput();
-        var mouseOutput = new WindowsMouseOutput();
-        var delay = new TaskDelay();
-        var macroRunner = new MacroRunner(keyboardOutput, mouseOutput, delay);
-        var coordinator = new MultiMacroHotkeyCoordinator(
-            runtimeSettings,
-            () => new WindowsGlobalHotkeyService(),
-            macroRunner,
-            mouseButtonServiceFactory:
-                () => new WindowsGlobalMouseButtonService());
-
-        _runtimeSettings = runtimeSettings;
-        coordinator.ExecutionFailed += OnRuntimeExecutionFailed;
-
-        try
+        if (_tray is not null)
         {
-            MultiMacroRuntimeStatus status = StartAndPresentInitialRuntimeStatus(
-                coordinator,
-                initialStatus => mainWindow.PresentInitialRuntimeStatus(
-                    initialStatus,
-                    runtimeSettings));
-            _coordinator = coordinator;
-            AttachRuntimeStatusUpdates(
-                coordinator,
-                status,
-                OnRuntimeStatusChanged);
+            _tray.Visible = false;
+            _tray.Dispose();
+            _tray = null;
         }
-        catch
-        {
-            coordinator.StatusChanged -= OnRuntimeStatusChanged;
-            coordinator.ExecutionFailed -= OnRuntimeExecutionFailed;
-            coordinator.Dispose();
-            _runtimeSettings = null;
-            throw;
-        }
+
+        Host?.Dispose();
+        _singleInstance?.ReleaseMutex();
+        Shutdown();
     }
 
-    private void OnRuntimeStatusChanged(MultiMacroRuntimeStatus status)
+    public void ShowMain()
     {
-        if (_runtimeSettings is not { } runtimeSettings)
+        Shell.Show();
+        if (Shell.WindowState == WindowState.Minimized)
         {
-            return;
+            Shell.WindowState = WindowState.Normal;
         }
 
-        DispatchToMainWindow(window =>
-            window.PresentRuntimeStatusUpdate(status, runtimeSettings));
+        Shell.Activate();
     }
 
-    private void OnRuntimeExecutionFailed(MacroId id, Exception exception)
+    private void CreateTray()
     {
-        Trace.TraceError("NovaMacro runtime execution failed: {0}", exception);
-
-        if (_runtimeSettings is not { } runtimeSettings)
+        var menu = new Forms.ContextMenuStrip();
+        menu.Items.Add("主界面", null, (_, _) => ShowMain());
+        menu.Items.Add("小工具", null, (_, _) => Shell.OpenTools());
+        menu.Items.Add("按键宏设置", null, (_, _) => Shell.OpenSettings(null));
+        menu.Items.Add("调试输出窗口", null, (_, _) => Shell.OpenDebug());
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add("退出", null, (_, _) => ExitApp());
+        _tray = new Forms.NotifyIcon
         {
-            return;
-        }
-
-        DispatchToMainWindow(window =>
-            window.PresentExecutionFailure(id, exception, runtimeSettings));
-    }
-
-    private void DispatchToMainWindow(Action<MainWindow> update)
-    {
-        if (_isShuttingDown || Dispatcher.HasShutdownStarted ||
-            Dispatcher.HasShutdownFinished)
-        {
-            return;
-        }
-
-        try
-        {
-            _ = Dispatcher.BeginInvoke(() =>
-            {
-                if (!_isShuttingDown && MainWindow is MainWindow window)
-                {
-                    update(window);
-                }
-            });
-        }
-        catch (InvalidOperationException)
-        {
-            // The dispatcher began shutting down after the guard above.
-        }
-    }
-
-    internal static bool ShouldPresentCurrentStatusAsUpdate(
-        MultiMacroRuntimeStatus initialStatus,
-        MultiMacroRuntimeStatus? currentStatus)
-    {
-        ArgumentNullException.ThrowIfNull(initialStatus);
-
-        return currentStatus is not null &&
-            !ReferenceEquals(initialStatus, currentStatus);
-    }
-
-    internal static MultiMacroRuntimeStatus StartAndPresentInitialRuntimeStatus(
-        MultiMacroHotkeyCoordinator coordinator,
-        Action<MultiMacroRuntimeStatus> presentInitial)
-    {
-        ArgumentNullException.ThrowIfNull(coordinator);
-        ArgumentNullException.ThrowIfNull(presentInitial);
-
-        MultiMacroRuntimeStatus status = coordinator.Start();
-        presentInitial(status);
-        return status;
-    }
-
-    internal static void AttachRuntimeStatusUpdates(
-        MultiMacroHotkeyCoordinator coordinator,
-        MultiMacroRuntimeStatus initialStatus,
-        Action<MultiMacroRuntimeStatus> presentUpdate)
-    {
-        ArgumentNullException.ThrowIfNull(coordinator);
-        ArgumentNullException.ThrowIfNull(initialStatus);
-        ArgumentNullException.ThrowIfNull(presentUpdate);
-
-        coordinator.StatusChanged += presentUpdate;
-        MultiMacroRuntimeStatus? currentStatus = coordinator.CurrentStatus;
-        if (ShouldPresentCurrentStatusAsUpdate(initialStatus, currentStatus))
-        {
-            presentUpdate(currentStatus!);
-        }
-    }
-
-    protected override void OnExit(ExitEventArgs e)
-    {
-        _isShuttingDown = true;
-
-        try
-        {
-            DisposeRuntime();
-        }
-        finally
-        {
-            try
-            {
-                base.OnExit(e);
-            }
-            finally
-            {
-                try
-                {
-                    _instanceGuard?.Dispose();
-                }
-                catch (Exception exception)
-                {
-                    Trace.TraceError(
-                        "NovaMacro single-instance cleanup failed: {0}",
-                        exception);
-                }
-                finally
-                {
-                    _instanceGuard = null;
-                }
-            }
-        }
-    }
-
-    private void DisposeRuntime()
-    {
-        MultiMacroHotkeyCoordinator? coordinator = _coordinator;
-        _coordinator = null;
-        _runtimeSettings = null;
-
-        if (coordinator is null)
-        {
-            return;
-        }
-
-        coordinator.StatusChanged -= OnRuntimeStatusChanged;
-        coordinator.ExecutionFailed -= OnRuntimeExecutionFailed;
-
-        try
-        {
-            coordinator.Dispose();
-        }
-        catch (Exception exception)
-        {
-            Trace.TraceError("NovaMacro runtime cleanup failed: {0}", exception);
-        }
+            Text = "NovaMacro",
+            Icon = System.Drawing.SystemIcons.Application,
+            Visible = true,
+            ContextMenuStrip = menu,
+        };
+        _tray.DoubleClick += (_, _) => ShowMain();
     }
 }

@@ -9,7 +9,8 @@
     <ProjectReference Include="..\NovaMacro.Core\NovaMacro.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.19" />
+    <!-- build assets only copy kernel-trace natives and duplicate interop DLLs (breaks ReadyToRun); DXGI frame tracing does not need them. -->
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.19" ExcludeAssets="build;buildTransitive" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
   </ItemGroup>

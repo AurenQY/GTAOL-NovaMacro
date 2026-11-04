@@ -1,20 +1,20 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>NovaMacro.App</RootNamespace>
+    <AssemblyName>NovaMacro</AssemblyName>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\NovaMacro.Core\NovaMacro.Core.csproj" />
-    <ProjectReference Include="..\NovaMacro.Windows\NovaMacro.Windows.csproj" />
+    <ProjectReference Include="..\NovaMacro.Platform\NovaMacro.Platform.csproj" />
   </ItemGroup>
-
   <ItemGroup>
-    <InternalsVisibleTo Include="NovaMacro.Tests" />
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
-
 </Project>

@@ -185,17 +185,18 @@ public class ScriptTests
 public class SteamLinkTests
 {
     [Fact]
-    public void ParsesUsersBotJson()
+    public void ParsesBotJson()
     {
-        var store = new Settings.SettingsStore(new Ini.IniDocument());
-        var link = SteamJoinLink.FromJson(store.GetString(Settings.Sec.MapTeleport, "Steam_一号BOT"));
+        const string json = "{\"链接\":\"steam://rungame/3240220/76561190000000000/-steamjvp=QUJDRA==\",\"昵称\":\"测试BOT\",\"获取时间\":\"2026-01-02 03:04:05\"}";
+        var link = SteamJoinLink.FromJson(json);
         Assert.NotNull(link);
         Assert.True(link!.IsValid);
         Assert.Equal("3240220", link.AppId);
-        Assert.Equal("76561199074735990", link.SteamId);
+        Assert.Equal("76561190000000000", link.SteamId);
         Assert.Equal("增强版战局", link.EditionName);
-        Assert.Equal(new DateTime(2026, 10, 27, 15, 0, 6), link.ObtainedAt);
-        Assert.Equal("!差传-网易uu香港联通18070", link.Nickname);
+        Assert.Equal(new DateTime(2026, 1, 2, 3, 4, 5), link.ObtainedAt);
+        Assert.Equal("测试BOT", link.Nickname);
+        Assert.Null(SteamJoinLink.FromJson(""));
     }
 
     [Fact]

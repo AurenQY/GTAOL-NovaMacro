@@ -8,12 +8,15 @@ using NovaMacro.Core.Settings;
 namespace NovaMacro.App.Windows;
 
 /// <summary>调试输出窗口.</summary>
-public sealed class DebugWindow : Window
+public sealed class DebugWindow : ThemedWindow
 {
     private readonly AppHost _host;
     private readonly TextBox _box = new()
     {
         IsReadOnly = true,
+        VerticalContentAlignment = VerticalAlignment.Top,
+        Background = Ui.Res("Panel"),
+        BorderThickness = new Thickness(0),
         TextWrapping = TextWrapping.Wrap,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         FontFamily = new FontFamily("Consolas, Microsoft YaHei UI"),

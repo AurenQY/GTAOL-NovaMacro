@@ -139,7 +139,7 @@ public sealed class AppHost : IDisposable
         Log.Write(CommandRunner.IsElevated
             ? "* 已使用管理员权限运行"
             : "* 你当前为非管理员运行，按键模拟可能对游戏无效，断网/卡单/限速等小工具不可用");
-        Log.Write($"* 配置文件夹：{DataFolder}");
+        Log.Write("* 配置文件夹：程序目录\\NovaMacro Config");
         if (KeyMap.Source.Length == 0)
         {
             Log.Write("* 未找到 GTA 键位文件，使用默认键位");
@@ -170,7 +170,7 @@ public sealed class AppHost : IDisposable
 
             try
             {
-                map.Apply(GtaControlFile.Parse(File.ReadAllText(file), preferSecondary), Path.GetDirectoryName(file)!);
+                map.Apply(GtaControlFile.Parse(File.ReadAllText(file), preferSecondary), $@"文档\Rockstar Games\{(edition == GtaEdition.Enhanced ? "GTA V Enhanced" : "GTA V")}\Profiles\***\control");
                 break;
             }
             catch (IOException)

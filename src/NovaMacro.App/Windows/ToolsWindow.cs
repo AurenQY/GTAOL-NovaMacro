@@ -15,7 +15,7 @@ using NovaMacro.Platform.SystemTools;
 namespace NovaMacro.App.Windows;
 
 /// <summary>小工具 — system tools, session password lock, firewall state, link room and timer.</summary>
-public sealed class ToolsWindow : Window
+public sealed class ToolsWindow : ThemedWindow
 {
     private readonly AppHost _host;
     private readonly Dictionary<FeatureId, Button> _toolButtons = new();
@@ -23,8 +23,8 @@ public sealed class ToolsWindow : Window
     private readonly ComboBox _stored = new() { MinWidth = 220 };
     private readonly TextBlock _lockInfo = Ui.Text(string.Empty, dim: true);
     private readonly StackPanel _firewall = new() { Orientation = Orientation.Horizontal };
-    private readonly ListBox _members = new() { Height = 110 };
-    private readonly TextBox _chatLog = new() { IsReadOnly = true, Height = 120, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private readonly ListBox _members = new() { Height = 120, Margin = new Thickness(2) };
+    private readonly TextBox _chatLog = new() { IsReadOnly = true, Height = 120, VerticalContentAlignment = VerticalAlignment.Top, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     private readonly TextBox _chatInput = new() { MinWidth = 260 };
     private readonly TextBlock _linkStatus = Ui.Text("连接状态：未连接", dim: true);
 
@@ -90,7 +90,7 @@ public sealed class ToolsWindow : Window
 
     private void RunTool(FeatureId id)
     {
-        if (id == FeatureId.KillGame && MessageBox.Show(this, "确定结束进程？", "确定操作？", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        if (id == FeatureId.KillGame && !Dialog.Confirm(this, "确定结束进程？", "确定操作？"))
         {
             return;
         }
@@ -199,7 +199,7 @@ public sealed class ToolsWindow : Window
         var folder = GameFolder;
         if (folder is null)
         {
-            MessageBox.Show(this, "未找到游戏目录路径");
+            Dialog.Show(this, "未找到游戏目录路径");
             return;
         }
 
@@ -210,7 +210,7 @@ public sealed class ToolsWindow : Window
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(this, "[战局锁] 操作失败：" + ex.Message);
+            Dialog.Show(this, "[战局锁] 操作失败：" + ex.Message);
         }
 
         RefreshLock();
@@ -233,14 +233,14 @@ public sealed class ToolsWindow : Window
         var p = _password.Text.Trim();
         if (p.Length == 0)
         {
-            MessageBox.Show(this, "[战局锁] 操作失败：请输入密码！");
+            Dialog.Show(this, "[战局锁] 操作失败：请输入密码！");
             return;
         }
 
         var list = StoredPasswords();
         if (list.Contains(p))
         {
-            MessageBox.Show(this, "[战局锁] 操作失败：密码已存在！");
+            Dialog.Show(this, "[战局锁] 操作失败：密码已存在！");
             return;
         }
 
@@ -318,7 +318,7 @@ public sealed class ToolsWindow : Window
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, ex.Message, "联动");
+                    Dialog.Show(this, ex.Message, "联动");
                 }
             }),
             Ui.Btn("加入房间", async () =>

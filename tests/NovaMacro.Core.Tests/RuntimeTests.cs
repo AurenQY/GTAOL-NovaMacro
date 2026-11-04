@@ -217,15 +217,27 @@ public class RuntimeTests
     [Fact]
     public void MapTeleportSendsBotLinkThenConfirms()
     {
-        var h = new Harness("[记忆开关]\n地图差传=真\n[地图差传设置]\n确认时限=1\n");
+        var h = new Harness("[记忆开关]\n地图差传=真\n[地图差传设置]\n确认时限=1\nSteam_一号BOT={\"链接\":\"steam://rungame/3240220/76561190000000000/-steamjvp=QUJDRA==\",\"昵称\":\"测试\",\"获取时间\":\"2026-01-02 03:04:05\"}\n");
         var feature = h.Runtime.Get<MapTeleportFeature>()!;
         h.Tap(InputCodes.Function(7));
         Thread.Sleep(350);
         h.Runtime.Tick();
         Harness.WaitFor(() => h.Urls.Opened.Count == 1);
-        Assert.StartsWith("steam://rungame/3240220/76561199074735990/", h.Urls.Opened[0]);
+        Assert.StartsWith("steam://rungame/3240220/76561190000000000/", h.Urls.Opened[0]);
         h.WaitIdle(feature);
         Assert.Contains("回车键", h.Output.Taps());
+    }
+
+    [Fact]
+    public void MapTeleportWithoutSavedLinkDoesNothing()
+    {
+        var h = new Harness("[记忆开关]\n地图差传=真\n");
+        h.Tap(InputCodes.Function(7));
+        Thread.Sleep(350);
+        h.Runtime.Tick();
+        h.WaitIdle(h.Runtime.Get<MapTeleportFeature>()!);
+        Assert.Empty(h.Urls.Opened);
+        Assert.Contains(h.Notifier.Messages, m => m.Contains("没有读取战局链接"));
     }
 
     [Fact]

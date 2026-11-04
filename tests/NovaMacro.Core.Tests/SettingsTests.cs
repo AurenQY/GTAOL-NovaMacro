@@ -75,7 +75,21 @@ public class SettingsStoreTests
         Assert.Equal(700, store.GetInt(Sec.Phone, "手机_呼出后延迟"));
         Assert.Equal(1500, store.GetInt(Sec.DelayClimb, "自动打开相机时间"));
         Assert.Equal("hh:mm:ss|:iii", store.GetString(Sec.Hud, "计时器时间格式"));
-        Assert.Contains("steam://rungame/3240220/", store.GetString(Sec.MapTeleport, "Steam_一号BOT"));
+    }
+
+    [Fact]
+    public void BundledDefaultsContainNoPersonalData()
+    {
+        var defaults = SettingsStore.LoadBundledDefaults().ToString();
+        foreach (var forbidden in new[] { "steam://", "Steam_一号BOT", "Steam_二号BOT", "联动昵称", "游戏文件夹路径", "窗口位置记忆", "主界面=", "已使用", "RegistryBackup", @":\" })
+        {
+            Assert.DoesNotContain(forbidden, defaults);
+        }
+
+        var store = new SettingsStore(new IniDocument());
+        Assert.Equal("玩家", store.GetString(Sec.Tools, "联动昵称"));
+        Assert.Equal(string.Empty, store.GetString(Sec.Device, "游戏文件夹路径"));
+        Assert.Equal(string.Empty, store.GetString(Sec.MapTeleport, "Steam_一号BOT"));
     }
 
     [Fact]

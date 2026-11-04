@@ -37,7 +37,6 @@ public sealed class SettingsStore
         if (!File.Exists(path))
         {
             var created = defaults.Clone();
-            created.Set("RegistryBackup", "ACP", "65001");
             var store = new SettingsStore(created, path, defaults);
             store.Save();
             return store;

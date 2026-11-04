@@ -1,4 +1,5 @@
 using System.Windows;
+using NovaMacro.App.Controls;
 using NovaMacro.App.Services;
 using NovaMacro.App.Windows;
 using NovaMacro.Core.Settings;
@@ -23,7 +24,7 @@ public partial class App : Application
         _singleInstance = new Mutex(true, "NovaMacro.SingleInstance", out var created);
         if (!created)
         {
-            MessageBox.Show("已经有一个 [NovaMacro] 程序正在运行", "NovaMacro", MessageBoxButton.OK, MessageBoxImage.Information);
+            Dialog.Show(null, "已经有一个 [NovaMacro] 程序正在运行", "NovaMacro");
             Shutdown();
             return;
         }
@@ -73,7 +74,13 @@ public partial class App : Application
 
     private void CreateTray()
     {
-        var menu = new Forms.ContextMenuStrip();
+        var menu = new Forms.ContextMenuStrip
+        {
+            Renderer = new Forms.ToolStripProfessionalRenderer(new DarkMenuColors()),
+            BackColor = System.Drawing.Color.FromArgb(0x22, 0x26, 0x2E),
+            ForeColor = System.Drawing.Color.FromArgb(0xE8, 0xEA, 0xF0),
+            ShowImageMargin = false,
+        };
         menu.Items.Add("主界面", null, (_, _) => ShowMain());
         menu.Items.Add("小工具", null, (_, _) => Shell.OpenTools());
         menu.Items.Add("按键宏设置", null, (_, _) => Shell.OpenSettings(null));
@@ -89,4 +96,34 @@ public partial class App : Application
         };
         _tray.DoubleClick += (_, _) => ShowMain();
     }
+}
+
+/// <summary>Dark colours for the tray context menu (WinForms).</summary>
+internal sealed class DarkMenuColors : Forms.ProfessionalColorTable
+{
+    private static readonly System.Drawing.Color Back = System.Drawing.Color.FromArgb(0x22, 0x26, 0x2E);
+    private static readonly System.Drawing.Color Hot = System.Drawing.Color.FromArgb(0x26, 0x3A, 0x5E);
+    private static readonly System.Drawing.Color Line = System.Drawing.Color.FromArgb(0x3D, 0x43, 0x50);
+
+    public override System.Drawing.Color ToolStripDropDownBackground => Back;
+
+    public override System.Drawing.Color MenuBorder => Line;
+
+    public override System.Drawing.Color MenuItemBorder => Hot;
+
+    public override System.Drawing.Color MenuItemSelected => Hot;
+
+    public override System.Drawing.Color MenuItemSelectedGradientBegin => Hot;
+
+    public override System.Drawing.Color MenuItemSelectedGradientEnd => Hot;
+
+    public override System.Drawing.Color ImageMarginGradientBegin => Back;
+
+    public override System.Drawing.Color ImageMarginGradientMiddle => Back;
+
+    public override System.Drawing.Color ImageMarginGradientEnd => Back;
+
+    public override System.Drawing.Color SeparatorDark => Line;
+
+    public override System.Drawing.Color SeparatorLight => Back;
 }

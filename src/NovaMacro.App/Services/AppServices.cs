@@ -1,4 +1,5 @@
 using System.Windows;
+using NovaMacro.App.Controls;
 using System.Windows.Media.Imaging;
 using NovaMacro.App.Windows;
 using NovaMacro.Core.Imaging;
@@ -39,7 +40,7 @@ public sealed class AppNotifier : INotifier
     {
         _host.Log.Write($"{title}：{message.Replace("\n", " ")}");
         Application.Current?.Dispatcher.BeginInvoke(() =>
-            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information));
+            Dialog.Show(App.Instance.Shell, message, title));
     }
 }
 

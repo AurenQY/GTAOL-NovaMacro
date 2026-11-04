@@ -15,21 +15,21 @@ using NovaMacro.Platform.SystemTools;
 namespace NovaMacro.App.Windows;
 
 /// <summary>按键宏设置 — every Settings.ini section rendered from the schema.</summary>
-public sealed class SettingsWindow : Window
+public sealed class SettingsWindow : ThemedWindow
 {
     private const string KeyMapPage = "游戏键位";
     private const string HotkeyPage = "全部热键";
 
     private readonly AppHost _host;
-    private readonly ListBox _sections = new() { Width = 170, Margin = new Thickness(6) };
+    private readonly ListBox _sections = new() { Width = 150, Margin = new Thickness(8, 8, 0, 8), BorderThickness = new Thickness(0) };
     private readonly ContentControl _page = new();
 
     public SettingsWindow(AppHost host, string? section)
     {
         _host = host;
         Title = "按键宏设置";
-        Width = 900;
-        Height = 700;
+        Width = 860;
+        Height = 640;
         WindowPositions.Restore(this, host.Settings, "设置界面");
         LocationChanged += (_, _) => WindowPositions.Save(this, host.Settings, "设置界面");
 
@@ -43,15 +43,18 @@ public sealed class SettingsWindow : Window
 
         _sections.SelectionChanged += (_, _) => ShowPage(_sections.SelectedItem as string);
         var dock = new DockPanel();
-        DockPanel.SetDock(_sections, Dock.Left);
-        dock.Children.Add(_sections);
+        var nav = new Border { Background = Ui.Res("Panel"), BorderBrush = Ui.Res("Border"), BorderThickness = new Thickness(0, 0, 1, 0), Child = _sections };
+        _sections.Background = Brushes.Transparent;
+        DockPanel.SetDock(nav, Dock.Left);
         var footer = Ui.Row(
             Ui.Btn("恢复本页默认", ResetPage, tip: "删除本页在 Settings.ini 中的所有值，恢复为默认配置"),
             Ui.Btn("打开ini配置文件", () => Process.Start(new ProcessStartInfo(_host.Settings.FilePath!) { UseShellExecute = true })),
             Ui.Btn("关闭设置", Close, accent: true));
         footer.HorizontalAlignment = HorizontalAlignment.Right;
-        DockPanel.SetDock(footer, Dock.Bottom);
-        dock.Children.Add(footer);
+        var footerBar = new Border { Background = Ui.Res("Panel"), BorderBrush = Ui.Res("Border"), BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(8, 4, 8, 4), Child = footer };
+        DockPanel.SetDock(footerBar, Dock.Bottom);
+        dock.Children.Add(footerBar);
+        dock.Children.Add(nav);
         dock.Children.Add(new ScrollViewer { Content = _page, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(4) });
         Content = dock;
         _sections.SelectedItem = section is not null && pages.Contains(section) ? section : pages[0];
@@ -68,7 +71,7 @@ public sealed class SettingsWindow : Window
         }
 
         var section = Current == KeyMapPage ? Sec.KeyOverrides : Current;
-        if (MessageBox.Show(this, $"确定恢复【{Current}】为默认配置？", "重置", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+        if (Dialog.Confirm(this, $"确定恢复【{Current}】为默认配置？", "重置"))
         {
             _host.Settings.ResetSection(section);
             ShowPage(Current);
@@ -82,8 +85,8 @@ public sealed class SettingsWindow : Window
             return;
         }
 
-        var panel = new StackPanel { Margin = new Thickness(6) };
-        panel.Children.Add(Ui.Text(section, size: 18, weight: FontWeights.Bold));
+        var panel = new StackPanel { Margin = new Thickness(10, 6, 14, 10) };
+        panel.Children.Add(Ui.Text(section, size: 16, weight: FontWeights.SemiBold));
         switch (section)
         {
             case HotkeyPage:
@@ -93,7 +96,7 @@ public sealed class SettingsWindow : Window
                 BuildKeyMap(panel);
                 break;
             default:
-                var grid = Ui.TwoColumns(260);
+                var grid = Ui.TwoColumns(230);
                 foreach (var d in SettingsSchema.All.Where(d => d.Section == section && !d.Hidden))
                 {
                     var label = Ui.Text(d.Label);
@@ -211,7 +214,7 @@ public sealed class SettingsWindow : Window
                 };
                 return num;
             default:
-                var text = new TextBox { Text = s.GetString(d.Section, d.Key), MinWidth = 300, TextWrapping = TextWrapping.Wrap };
+                var text = new TextBox { Text = s.GetString(d.Section, d.Key), MinWidth = 300, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top };
                 text.LostFocus += (_, _) => s.Set(d.Section, d.Key, text.Text);
                 return text;
         }
@@ -303,7 +306,7 @@ public sealed class SettingsWindow : Window
                         var found = GtaLocator.Find(_host.Game);
                         if (found is null)
                         {
-                            MessageBox.Show(this, "[游戏文件夹路径] 未能找到游戏目录路径！请检查是否没有运行、下载游戏，也可手动修改路径！");
+                            Dialog.Show(this, "[游戏文件夹路径] 未能找到游戏目录路径！请检查是否没有运行、下载游戏，也可手动修改路径！");
                             return;
                         }
 
@@ -315,7 +318,7 @@ public sealed class SettingsWindow : Window
                 panel.Children.Add(Ui.Row(Ui.Btn("应用开机启动设置", () =>
                 {
                     AutoStart.Set(_host.Settings.GetBool(Sec.Switches, "启用开机启动"), Environment.ProcessPath!);
-                    MessageBox.Show(this, "设置完成！");
+                    Dialog.Show(this, "设置完成！");
                 })));
                 break;
             case Sec.Crosshair:
@@ -339,7 +342,7 @@ public sealed class SettingsWindow : Window
                 Ui.Row(
                     Ui.Btn("读取最近加入的战局链接", () =>
                     {
-                        MessageBox.Show(this,
+                        Dialog.Show(this,
                             "【请勿马上关闭本窗口，仔细阅读↓】\n该窗口正在等待读取，你需要在相应的Steam好友或组中手动加入玩家战局，之后即可点击 [确定] 来进行读取！",
                             "等待读取【" + key + "】战局链接...");
                         if (feature?.ReadLatestLink(key) is not null)
@@ -352,7 +355,7 @@ public sealed class SettingsWindow : Window
                         var parsed = SteamJoinLink.FromText(Clipboard.ContainsText() ? Clipboard.GetText() : null, DateTime.Now, key);
                         if (parsed is null)
                         {
-                            MessageBox.Show(this, "剪贴版里面找不到完整战局链接\n链接格式（包含即可）：steam://rungame/[......]==", "操作失败");
+                            Dialog.Show(this, "剪贴版里面找不到完整战局链接\n链接格式（包含即可）：steam://rungame/[......]==", "操作失败");
                             return;
                         }
 
@@ -364,7 +367,7 @@ public sealed class SettingsWindow : Window
                         if (link is not null)
                         {
                             Clipboard.SetText(link.Url);
-                            MessageBox.Show(this, "已将战局链接复制到剪贴版中", "操作完成");
+                            Dialog.Show(this, "已将战局链接复制到剪贴版中", "操作完成");
                         }
                     }),
                     Ui.Btn("测试加入", () =>
@@ -390,7 +393,7 @@ public sealed class SettingsWindow : Window
     {
         if (!Clipboard.ContainsImage())
         {
-            MessageBox.Show(this, "剪贴板中没有图片数据！\n[√] 截图后直接复制的图片数据\n[×] 桌面、文件资源管理器上的图片文件");
+            Dialog.Show(this, "剪贴板中没有图片数据！\n[√] 截图后直接复制的图片数据\n[×] 桌面、文件资源管理器上的图片文件");
             return;
         }
 
@@ -400,7 +403,7 @@ public sealed class SettingsWindow : Window
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         using var stream = File.Create(path);
         encoder.Save(stream);
-        MessageBox.Show(this, "已保存至【" + path + "】");
+        Dialog.Show(this, "已保存至【" + path + "】");
     }
 
     private void BrowseGameFolder()
@@ -413,7 +416,7 @@ public sealed class SettingsWindow : Window
 
         if (GtaInstall.FindExecutable(dialog.SelectedPath) is null)
         {
-            MessageBox.Show(this, "[游戏文件夹路径] 错误：该目录下没有游戏文件！");
+            Dialog.Show(this, "[游戏文件夹路径] 错误：该目录下没有游戏文件！");
             return;
         }
 

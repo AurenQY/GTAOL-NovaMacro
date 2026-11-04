@@ -4,28 +4,41 @@ using System.Windows.Media;
 
 namespace NovaMacro.App.Controls;
 
-/// <summary>Tiny helpers for building WPF layouts in code.</summary>
+/// <summary>Tiny helpers for building compact dark WPF layouts in code.</summary>
 public static class Ui
 {
     public static Brush Res(string key) => (Brush)Application.Current.Resources[key];
 
-    public static TextBlock Text(string text, bool dim = false, double size = 13, FontWeight? weight = null) => new()
+    public static Style Style(string key) => (Style)Application.Current.Resources[key];
+
+    public static TextBlock Text(string text, bool dim = false, double size = 12, FontWeight? weight = null, bool wrap = true) => new()
     {
         Text = text,
         Foreground = Res(dim ? "FgDim" : "Fg"),
         FontSize = size,
         FontWeight = weight ?? FontWeights.Normal,
-        TextWrapping = TextWrapping.Wrap,
+        TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap,
+        TextTrimming = wrap ? TextTrimming.None : TextTrimming.CharacterEllipsis,
         VerticalAlignment = VerticalAlignment.Center,
-        Margin = new Thickness(3),
+        Margin = new Thickness(2),
     };
+
+    /// <summary>Upper-case-ish section caption with an accent bar.</summary>
+    public static FrameworkElement Header(string text)
+    {
+        var bar = new Border { Width = 3, Height = 13, CornerRadius = new CornerRadius(1.5), Background = Res("Accent"), Margin = new Thickness(0, 0, 7, 0) };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 10, 6, 3) };
+        panel.Children.Add(bar);
+        panel.Children.Add(new TextBlock { Text = text, Foreground = Res("FgDim"), FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        return panel;
+    }
 
     public static Button Btn(string text, Action onClick, bool accent = false, string? tip = null)
     {
         var b = new Button { Content = text, ToolTip = tip };
         if (accent)
         {
-            b.Style = (Style)Application.Current.Resources["AccentButton"];
+            b.Style = Style("AccentButton");
         }
 
         b.Click += (_, _) => onClick();
@@ -34,7 +47,7 @@ public static class Ui
 
     public static StackPanel Row(params UIElement[] children)
     {
-        var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2) };
+        var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
         foreach (var c in children)
         {
             p.Children.Add(c);
@@ -45,7 +58,7 @@ public static class Ui
 
     public static StackPanel Col(params UIElement[] children)
     {
-        var p = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(2) };
+        var p = new StackPanel { Orientation = Orientation.Vertical };
         foreach (var c in children)
         {
             p.Children.Add(c);
@@ -59,7 +72,9 @@ public static class Ui
         var content = child;
         if (title is not null)
         {
-            content = Col(Text(title, dim: true, size: 12, weight: FontWeights.SemiBold), child);
+            var caption = Text(title, dim: true, size: 12, weight: FontWeights.SemiBold);
+            caption.Margin = new Thickness(2, 0, 2, 4);
+            content = Col(caption, child);
         }
 
         return new Border
@@ -67,16 +82,16 @@ public static class Ui
             Background = Res("Panel"),
             BorderBrush = Res("Border"),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(10, 8, 10, 8),
-            Margin = new Thickness(5),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(10, 7, 10, 7),
+            Margin = new Thickness(4),
             Child = content,
         };
     }
 
     public static Grid TwoColumns(double leftWidth = 200)
     {
-        var g = new Grid { Margin = new Thickness(2) };
+        var g = new Grid { Margin = new Thickness(0, 2, 0, 2) };
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(leftWidth) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         return g;
@@ -86,6 +101,29 @@ public static class Ui
     {
         var row = grid.RowDefinitions.Count;
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        if (row % 2 == 1)
+        {
+            var stripe = new Border { Background = Res("Panel"), CornerRadius = new CornerRadius(4) };
+            Grid.SetRow(stripe, row);
+            Grid.SetColumnSpan(stripe, 2);
+            grid.Children.Add(stripe);
+        }
+
+        if (left is FrameworkElement fl)
+        {
+            fl.Margin = new Thickness(8, 3, 6, 3);
+            fl.VerticalAlignment = VerticalAlignment.Center;
+        }
+
+        if (right is FrameworkElement fr)
+        {
+            fr.VerticalAlignment = VerticalAlignment.Center;
+            if (fr.Margin == default)
+            {
+                fr.Margin = new Thickness(2);
+            }
+        }
+
         Grid.SetRow(left, row);
         Grid.SetColumn(left, 0);
         Grid.SetRow(right, row);
@@ -98,13 +136,14 @@ public static class Ui
     {
         var box = new TextBox { Text = initial, MinWidth = 320 };
         string? result = null;
-        var w = new Window
+        var w = new ThemedWindow
         {
             Title = title,
             Owner = owner,
             SizeToContent = SizeToContent.WidthAndHeight,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
         };
         var ok = Btn("确定", () =>
         {
@@ -112,10 +151,13 @@ public static class Ui
             w.DialogResult = true;
         }, accent: true);
         ok.IsDefault = true;
+        var cancel = Btn("取消", () => w.DialogResult = false);
+        var buttons = Row(ok, cancel);
+        buttons.HorizontalAlignment = HorizontalAlignment.Right;
         w.Content = new StackPanel
         {
-            Margin = new Thickness(12),
-            Children = { Text(message), box, Row(ok, Btn("取消", () => w.DialogResult = false)) },
+            Margin = new Thickness(16, 14, 16, 12),
+            Children = { Text(message), box, buttons },
         };
         box.Loaded += (_, _) =>
         {

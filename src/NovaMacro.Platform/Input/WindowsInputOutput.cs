@@ -51,6 +51,14 @@ public sealed class WindowsInputOutput : IInputOutput
         SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
     }
 
+    public void SendMenuMask()
+    {
+        // vk 0xE8 is unassigned: sent by virtual key (no scan code) it only breaks up a lone Alt tap.
+        var down = new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wVk = 0xE8, dwExtraInfo = InjectionMarker } } };
+        var up = new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wVk = 0xE8, dwFlags = KEYEVENTF_KEYUP, dwExtraInfo = InjectionMarker } } };
+        SendInput(2, new[] { down, up }, Marshal.SizeOf<INPUT>());
+    }
+
     public void ReleaseAll()
     {
         foreach (var code in _held.Keys.ToArray())

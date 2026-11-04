@@ -45,8 +45,11 @@ public static class SettingsSchema
 
     public static IEnumerable<string> SectionOrder => All.Select(d => d.Section).Distinct();
 
+    private static readonly Dictionary<(string, string), SettingDescriptor> Index =
+        All.GroupBy(d => (d.Section, d.Key)).ToDictionary(g => g.Key, g => g.First());
+
     public static SettingDescriptor? Find(string section, string key) =>
-        All.FirstOrDefault(d => d.Section == section && d.Key == key);
+        Index.TryGetValue((section, key), out var d) ? d : null;
 
     private static List<SettingDescriptor> Build()
     {

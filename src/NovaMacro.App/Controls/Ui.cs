@@ -132,6 +132,72 @@ public static class Ui
         grid.Children.Add(right);
     }
 
+    /// <summary>Lays out label/editor pairs column-major into <paramref name="columns"/> side-by-side columns.</summary>
+    public static Grid MultiColumn(IReadOnlyList<(UIElement Label, UIElement Editor)> rows, int columns, double labelWidth)
+    {
+        columns = Math.Max(1, Math.Min(columns, rows.Count));
+        var perColumn = (int)Math.Ceiling(rows.Count / (double)columns);
+        var grid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+        for (var c = 0; c < columns; c++)
+        {
+            if (c > 0)
+            {
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) });
+            }
+
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(labelWidth) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        }
+
+        for (var r = 0; r < perColumn; r++)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var c = i / perColumn;
+            var r = i % perColumn;
+            var baseCol = c * 3;
+            if (r % 2 == 1)
+            {
+                var stripe = new Border { Background = Res("Panel"), CornerRadius = new CornerRadius(3) };
+                Grid.SetRow(stripe, r);
+                Grid.SetColumn(stripe, baseCol);
+                Grid.SetColumnSpan(stripe, 2);
+                grid.Children.Add(stripe);
+            }
+
+            var (label, editor) = rows[i];
+            if (label is FrameworkElement fl)
+            {
+                fl.Margin = new Thickness(6, 1, 4, 1);
+                fl.VerticalAlignment = VerticalAlignment.Center;
+                if (fl is TextBlock tb)
+                {
+                    tb.TextWrapping = TextWrapping.NoWrap;
+                    tb.TextTrimming = TextTrimming.CharacterEllipsis;
+                    tb.ToolTip ??= tb.Text;
+                }
+            }
+
+            if (editor is FrameworkElement fe)
+            {
+                fe.VerticalAlignment = VerticalAlignment.Center;
+                fe.Margin = new Thickness(1, 1, 2, 1);
+            }
+
+            Grid.SetRow(label, r);
+            Grid.SetColumn(label, baseCol);
+            Grid.SetRow(editor, r);
+            Grid.SetColumn(editor, baseCol + 1);
+            grid.Children.Add(label);
+            grid.Children.Add(editor);
+        }
+
+        return grid;
+    }
+
     public static string? Prompt(Window owner, string title, string message, string initial = "")
     {
         var box = new TextBox { Text = initial, MinWidth = 320 };

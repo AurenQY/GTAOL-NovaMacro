@@ -137,10 +137,49 @@ public abstract class MacroFeature
     {
     }
 
+    /// <summary>
+    /// Modifiers of the hotkey that started the macro (e.g. Alt of Alt+R) must not be combined with the
+    /// injected keys: Alt+Enter toggles full screen and Alt+key produces system-menu beeps. Wait briefly
+    /// for the user to release them, then release them for the game if they are still held.
+    /// </summary>
+    private void ReleaseHotkeyModifiers(MacroContext context)
+    {
+        var mods = (CustomHotkey ?? S.Settings.GetHotkey(Definition)).Modifiers;
+        if (mods == ModifierMask.None || Definition.Group != FeatureGroup.Macro)
+        {
+            return;
+        }
+
+        var flags = new[] { ModifierMask.Ctrl, ModifierMask.Shift, ModifierMask.Alt }.Where(f => mods.HasFlag(f)).ToArray();
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (waited.ElapsedMilliseconds < 600 && flags.Any(f => S.InputState.IsModifierDown(f)))
+        {
+            context.Wait(-10);
+        }
+
+        foreach (var flag in flags.Where(f => S.InputState.IsModifierDown(f)))
+        {
+            var (left, right) = flag switch
+            {
+                ModifierMask.Ctrl => (InputCodes.LControl, InputCodes.RControl),
+                ModifierMask.Shift => (InputCodes.LShift, InputCodes.RShift),
+                _ => (InputCodes.LAlt, InputCodes.RAlt),
+            };
+            if (flag == ModifierMask.Alt)
+            {
+                S.Input.Output.SendMenuMask();
+            }
+
+            S.Input.Output.Up(left);
+            S.Input.Output.Up(right);
+        }
+    }
+
     private void Execute(Action<MacroContext> body, MacroContext context, CancellationTokenSource cts)
     {
         try
         {
+            ReleaseHotkeyModifiers(context);
             body(context);
         }
         catch (OperationCanceledException)

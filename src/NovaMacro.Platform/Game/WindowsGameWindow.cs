@@ -18,6 +18,7 @@ public sealed class WindowsGameWindow : IGameWindow
     private GtaEdition _edition;
     private long _lastScan;
     private nint _lastForeignForeground;
+    private Process? _process;
 
     public event EventHandler? GameExited;
 
@@ -176,7 +177,47 @@ public sealed class WindowsGameWindow : IGameWindow
 
     public bool Refresh()
     {
-        var wasRunning = _pid != 0;
+        bool wasRunning;
+        lock (_gate)
+        {
+            wasRunning = _pid != 0;
+        }
+
+        // Fast path: the tracked process is still alive. Never re-enumerate processes or modules of a
+        // running game every second (that is expensive and causes stutter).
+        var tracked = _process;
+        if (tracked is not null)
+        {
+            bool exited;
+            try
+            {
+                exited = tracked.HasExited;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                exited = true;
+            }
+
+            if (!exited)
+            {
+                lock (_gate)
+                {
+                    _lastScan = Environment.TickCount64;
+                    if (_hwnd == 0 || !IsWindow(_hwnd) || !IsWindowVisible(_hwnd))
+                    {
+                        _hwnd = FindMainWindow((uint)_pid);
+                        _threadId = _hwnd != 0 ? GetWindowThreadProcessId(_hwnd, out _) : 0;
+                    }
+                }
+
+                return true;
+            }
+
+            tracked.Dispose();
+            _process = null;
+        }
+
+        _lastForeignForeground = 0;
         Process? found = null;
         foreach (var name in GtaInstall.ProcessNames)
         {
@@ -193,7 +234,6 @@ public sealed class WindowsGameWindow : IGameWindow
             }
         }
 
-        _lastForeignForeground = 0;
         lock (_gate)
         {
             _lastScan = Environment.TickCount64;
@@ -206,10 +246,12 @@ public sealed class WindowsGameWindow : IGameWindow
             }
             else
             {
+                _process = found;
                 _pid = found.Id;
                 _edition = GtaInstall.EditionFromExe(found.ProcessName);
                 try
                 {
+                    // Read once per game process.
                     _path = found.MainModule?.FileName ?? _path;
                 }
                 catch (System.ComponentModel.Win32Exception)
@@ -221,11 +263,10 @@ public sealed class WindowsGameWindow : IGameWindow
 
                 _hwnd = FindMainWindow((uint)found.Id);
                 _threadId = _hwnd != 0 ? GetWindowThreadProcessId(_hwnd, out _) : 0;
-                found.Dispose();
             }
         }
 
-        var isRunning = _pid != 0;
+        var isRunning = found is not null;
         if (wasRunning && !isRunning)
         {
             GameExited?.Invoke(this, EventArgs.Empty);
@@ -267,7 +308,7 @@ public sealed class WindowsGameWindow : IGameWindow
             last = _lastScan;
         }
 
-        if (Environment.TickCount64 - last > 1500)
+        if (Environment.TickCount64 - last > 2000)
         {
             Refresh();
         }

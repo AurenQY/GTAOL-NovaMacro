@@ -27,6 +27,8 @@ public sealed class FakeOutput : IInputOutput
 
     public void ReleaseAll() => Add("ReleaseAll");
 
+    public void SendMenuMask() => Add("Mask");
+
     /// <summary>Key names of completed taps (down followed by up).</summary>
     public List<string> Taps()
     {

@@ -28,8 +28,8 @@ public sealed class SettingsWindow : ThemedWindow
     {
         _host = host;
         Title = "按键宏设置";
-        Width = 860;
-        Height = 640;
+        Width = 1120;
+        Height = 690;
         WindowPositions.Restore(this, host.Settings, "设置界面");
         LocationChanged += (_, _) => WindowPositions.Save(this, host.Settings, "设置界面");
 
@@ -96,20 +96,21 @@ public sealed class SettingsWindow : ThemedWindow
                 BuildKeyMap(panel);
                 break;
             default:
-                var grid = Ui.TwoColumns(230);
+                var rows = new List<(UIElement, UIElement)>();
                 foreach (var d in SettingsSchema.All.Where(d => d.Section == section && !d.Hidden))
                 {
                     var label = Ui.Text(d.Label);
-                    label.ToolTip = d.Help;
+                    label.ToolTip = d.Help ?? d.Label;
                     var editor = Editor(d);
                     if (d.Help is not null)
                     {
                         editor.ToolTip = d.Help;
                     }
 
-                    Ui.AddRow(grid, label, editor);
+                    rows.Add((label, editor));
                 }
 
+                var grid = Ui.MultiColumn(rows, rows.Count > 10 ? 2 : 1, 190);
                 panel.Children.Add(grid);
                 BuildExtras(section, panel);
                 break;
@@ -129,7 +130,7 @@ public sealed class SettingsWindow : ThemedWindow
                 cb.Unchecked += (_, _) => s.SetBool(d.Section, d.Key, false);
                 return cb;
             case SettingKind.Choice:
-                var combo = new ComboBox { MinWidth = 220, HorizontalAlignment = HorizontalAlignment.Left };
+                var combo = new ComboBox { MinWidth = 150 };
                 foreach (var c in d.Choices!)
                 {
                     combo.Items.Add(c);
@@ -145,7 +146,7 @@ public sealed class SettingsWindow : ThemedWindow
                 };
                 return combo;
             case SettingKind.Key:
-                var keyButton = new Button { Content = KeyNames.GetName(s.GetInt(d.Section, d.Key)), MinWidth = 160, HorizontalAlignment = HorizontalAlignment.Left };
+                var keyButton = new Button { Content = KeyNames.GetName(s.GetInt(d.Section, d.Key)), MinWidth = 120, HorizontalAlignment = HorizontalAlignment.Left };
                 keyButton.Click += (_, _) =>
                 {
                     var hk = HotkeyCaptureWindow.Capture(this, _host, d.Label, singleKey: true);
@@ -157,7 +158,7 @@ public sealed class SettingsWindow : ThemedWindow
                 };
                 return keyButton;
             case SettingKind.Modifier:
-                var mods = new ComboBox { MinWidth = 220, HorizontalAlignment = HorizontalAlignment.Left };
+                var mods = new ComboBox { MinWidth = 150 };
                 for (var i = 0; i <= 7; i++)
                 {
                     mods.Items.Add(Hotkey.ModifierText((ModifierMask)i));
@@ -169,7 +170,7 @@ public sealed class SettingsWindow : ThemedWindow
             case SettingKind.Color:
                 var colorRef = s.GetInt(d.Section, d.Key);
                 var swatch = new Border { Width = 28, Height = 20, Margin = new Thickness(3), BorderBrush = Ui.Res("Border"), BorderThickness = new Thickness(1) };
-                var colorBox = new TextBox { Text = colorRef.ToString(), Width = 120 };
+                var colorBox = new TextBox { Text = colorRef.ToString(), Width = 90 };
                 void Paint()
                 {
                     if (int.TryParse(colorBox.Text, out var v))
@@ -202,7 +203,7 @@ public sealed class SettingsWindow : ThemedWindow
                 });
                 return Ui.Row(swatch, colorBox, pick);
             case SettingKind.Int:
-                var num = new TextBox { Text = s.GetInt(d.Section, d.Key).ToString(), Width = 120, HorizontalAlignment = HorizontalAlignment.Left };
+                var num = new TextBox { Text = s.GetInt(d.Section, d.Key).ToString(), Width = 90, HorizontalAlignment = HorizontalAlignment.Left };
                 num.LostFocus += (_, _) =>
                 {
                     if (int.TryParse(num.Text, out var v))
@@ -214,7 +215,7 @@ public sealed class SettingsWindow : ThemedWindow
                 };
                 return num;
             default:
-                var text = new TextBox { Text = s.GetString(d.Section, d.Key), MinWidth = 300, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top };
+                var text = new TextBox { Text = s.GetString(d.Section, d.Key), MinWidth = 120 };
                 text.LostFocus += (_, _) => s.Set(d.Section, d.Key, text.Text);
                 return text;
         }
@@ -223,11 +224,11 @@ public sealed class SettingsWindow : ThemedWindow
     private void BuildHotkeys(StackPanel panel)
     {
         panel.Children.Add(Ui.Text("点击按钮修改热键，右键恢复默认。小工具热键需要在【小工具配置】中启用。", dim: true));
-        var grid = Ui.TwoColumns(200);
+        var rows = new List<(UIElement, UIElement)>();
         foreach (var f in FeatureCatalog.All.Where(f => f.HotkeySection is not null))
         {
             var feature = f;
-            var button = new Button { Content = _host.Settings.GetHotkey(feature).ToString(), MinWidth = 200, HorizontalAlignment = HorizontalAlignment.Left, ToolTip = feature.Help };
+            var button = new Button { Content = _host.Settings.GetHotkey(feature).ToString(), MinWidth = 160, HorizontalAlignment = HorizontalAlignment.Left, ToolTip = feature.Help };
             button.Click += (_, _) =>
             {
                 var hk = HotkeyCaptureWindow.Capture(this, _host, "设置热键 - " + feature.Name);
@@ -242,10 +243,10 @@ public sealed class SettingsWindow : ThemedWindow
                 _host.Settings.SetHotkey(feature, feature.DefaultHotkey);
                 button.Content = feature.DefaultHotkey.ToString();
             };
-            Ui.AddRow(grid, Ui.Text(feature.Name), button);
+            rows.Add((Ui.Text(feature.Name), button));
         }
 
-        panel.Children.Add(grid);
+        panel.Children.Add(Ui.MultiColumn(rows, 3, 100));
     }
 
     private void BuildKeyMap(StackPanel panel)
@@ -253,7 +254,7 @@ public sealed class SettingsWindow : ThemedWindow
         var map = _host.KeyMap;
         panel.Children.Add(Ui.Text(map.Source.Length > 0 ? "读取于文件夹：" + map.Source : "未找到 GTA 键位文件（control\\user.xml），当前使用默认键位", dim: true));
         panel.Children.Add(Ui.Text("如游戏内修改过键位，可在此覆盖；右键按钮取消覆盖。", dim: true));
-        var grid = Ui.TwoColumns(200);
+        var rows = new List<(UIElement, UIElement)>();
         foreach (var info in GameActions.All)
         {
             var action = info;
@@ -261,7 +262,7 @@ public sealed class SettingsWindow : ThemedWindow
             var button = new Button
             {
                 Content = KeyNames.GetName(map[action.Action]) + (overridden ? "  (覆盖)" : string.Empty),
-                MinWidth = 180,
+                MinWidth = 120,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 ToolTip = action.GtaInput,
             };
@@ -280,7 +281,7 @@ public sealed class SettingsWindow : ThemedWindow
                 _host.ReloadKeyMap();
                 ShowPage(KeyMapPage);
             };
-            Ui.AddRow(grid, Ui.Text(action.DisplayName), button);
+            rows.Add((Ui.Text(action.DisplayName), button));
         }
 
         panel.Children.Add(Ui.Row(Ui.Btn("重新读取游戏键位", () =>
@@ -288,7 +289,7 @@ public sealed class SettingsWindow : ThemedWindow
             _host.ReloadKeyMap();
             ShowPage(KeyMapPage);
         })));
-        panel.Children.Add(grid);
+        panel.Children.Add(Ui.MultiColumn(rows, 3, 120));
     }
 
     private void BuildExtras(string section, StackPanel panel)

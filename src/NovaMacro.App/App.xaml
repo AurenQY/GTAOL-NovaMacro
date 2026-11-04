@@ -35,9 +35,9 @@
             <Setter Property="Foreground" Value="{StaticResource Fg}" />
             <Setter Property="Background" Value="{StaticResource PanelAlt}" />
             <Setter Property="BorderBrush" Value="{StaticResource Border}" />
-            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="Padding" Value="9,2" />
             <Setter Property="Margin" Value="2" />
-            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="MinHeight" Value="24" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="SnapsToDevicePixels" Value="True" />
@@ -82,6 +82,28 @@
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Text-like button (hotkey labels in the main list) -->
+        <Style x:Key="LinkButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource AccentHover}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="Transparent" Padding="5,1" CornerRadius="3">
+                            <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Right" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource AccentDim}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -182,9 +204,9 @@
             <Setter Property="BorderBrush" Value="{StaticResource BorderStrong}" />
             <Setter Property="CaretBrush" Value="{StaticResource Fg}" />
             <Setter Property="SelectionBrush" Value="{StaticResource Accent}" />
-            <Setter Property="Padding" Value="5,2" />
-            <Setter Property="Margin" Value="2" />
-            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="5,1" />
+            <Setter Property="Margin" Value="1" />
+            <Setter Property="MinHeight" Value="24" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
@@ -227,8 +249,8 @@
 
         <Style TargetType="ComboBox">
             <Setter Property="Foreground" Value="{StaticResource Fg}" />
-            <Setter Property="Margin" Value="2" />
-            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Margin" Value="1" />
+            <Setter Property="MinHeight" Value="24" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="SnapsToDevicePixels" Value="True" />

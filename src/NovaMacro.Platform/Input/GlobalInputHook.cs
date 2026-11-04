@@ -111,12 +111,13 @@ public sealed class GlobalInputHook : IInputState, IDisposable
     {
         if (nCode >= 0)
         {
-            var data = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-            var injected = (data.flags & LLKHF_INJECTED) != 0;
+            var vk = Marshal.ReadInt32(lParam, 0);
+            var flags = Marshal.ReadInt32(lParam, 8);
+            var injected = (flags & LLKHF_INJECTED) != 0;
             var msg = (int)wParam;
             var isDown = msg is WM_KEYDOWN or WM_SYSKEYDOWN;
-            var code = (int)data.vkCode;
-            if (code == InputCodes.Enter && (data.flags & LLKHF_EXTENDED) != 0)
+            var code = vk;
+            if (code == InputCodes.Enter && (flags & LLKHF_EXTENDED) != 0)
             {
                 code = InputCodes.NumpadEnter;
             }
@@ -139,12 +140,25 @@ public sealed class GlobalInputHook : IInputState, IDisposable
     {
         if (nCode >= 0)
         {
-            var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-            var injected = (data.flags & LLMHF_INJECTED) != 0;
+            // MSLLHOOKSTRUCT: pt (8 bytes), mouseData (4), flags (4). Read without allocating:
+            // mouse moves arrive up to thousands of times per second.
+            var msg = (int)wParam;
+            var flags = Marshal.ReadInt32(lParam, 12);
+            var injected = (flags & LLMHF_INJECTED) != 0;
+            if (msg == 0x0200)
+            {
+                if (!injected)
+                {
+                    _lastPhysicalInput = _clock.ElapsedMilliseconds;
+                }
+
+                return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+            }
+
             if (!injected)
             {
-                var msg = (int)wParam;
-                var xButton = (data.mouseData >> 16) & 0xFFFF;
+                var mouseData = (uint)Marshal.ReadInt32(lParam, 8);
+                var xButton = (mouseData >> 16) & 0xFFFF;
                 (int Code, bool Down)? evt = msg switch
                 {
                     WM_LBUTTONDOWN => (InputCodes.LeftButton, true),
@@ -160,7 +174,7 @@ public sealed class GlobalInputHook : IInputState, IDisposable
 
                 if (msg == WM_MOUSEWHEEL)
                 {
-                    var delta = (short)((data.mouseData >> 16) & 0xFFFF);
+                    var delta = (short)((mouseData >> 16) & 0xFFFF);
                     var wheel = delta > 0 ? InputCodes.WheelUp : InputCodes.WheelDown;
                     var swallow = Process(wheel, true);
                     swallow |= Process(wheel, false);
@@ -173,14 +187,44 @@ public sealed class GlobalInputHook : IInputState, IDisposable
                 {
                     return 1;
                 }
-                else if (msg == 0x0200)
-                {
-                    Interlocked.Exchange(ref _lastPhysicalInput, _clock.ElapsedMilliseconds);
-                }
             }
         }
 
         return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+    }
+
+    private readonly bool[] _suspect = new bool[0x100];
+
+    /// <summary>
+    /// Clears keys we believe are held but Windows reports as released for two consecutive checks
+    /// (a key-up can be lost, e.g. across the UAC/secure desktop). Call every ~250 ms.
+    /// </summary>
+    public void ReconcileStuckKeys()
+    {
+        for (var code = 1; code < 0x100; code++)
+        {
+            if (!_down[code] || code is InputCodes.Shift or InputCodes.Control or InputCodes.Alt)
+            {
+                _suspect[code] = false;
+                continue;
+            }
+
+            if ((GetAsyncKeyState(code) & 0x8000) != 0)
+            {
+                _suspect[code] = false;
+                continue;
+            }
+
+            if (_suspect[code])
+            {
+                _suspect[code] = false;
+                Process(code, false);
+            }
+            else
+            {
+                _suspect[code] = true;
+            }
+        }
     }
 
     private bool Process(int code, bool isDown)

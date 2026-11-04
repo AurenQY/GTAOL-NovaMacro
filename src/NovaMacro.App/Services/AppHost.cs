@@ -283,11 +283,17 @@ public sealed class AppHost : IDisposable
     private void UpdateLogFile() =>
         Log.SaveFile = Settings.GetBool(Sec.Other, "保存日志") ? Path.Combine(DataFolder, "调试日志.txt") : null;
 
+    private int _tickCount;
+
     private void SafeTick()
     {
         try
         {
             Runtime.Tick();
+            if (++_tickCount % 16 == 0)
+            {
+                Hook.ReconcileStuckKeys();
+            }
         }
         catch (Exception ex)
         {

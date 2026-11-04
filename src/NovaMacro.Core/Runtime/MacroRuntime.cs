@@ -242,6 +242,7 @@ public sealed class MacroRuntime
                             }
                         }
 
+                        _services.Notifier.Log($"[热键] {s.Hotkey} → {feature.Definition.Name}");
                         SafeInvoke(feature, feature.OnHotkeyDown);
                     }
                 }
@@ -290,7 +291,18 @@ public sealed class MacroRuntime
             }
         }
 
+        if (suppress && isDown && !isRepeat && IsMenuModifierDown())
+        {
+            _services.Input.Output.SendMenuMask();
+        }
+
         return suppress;
+    }
+
+    private bool IsMenuModifierDown()
+    {
+        var state = _services.InputState;
+        return state.IsModifierDown(ModifierMask.Alt) || state.IsDown(InputCodes.LWin) || state.IsDown(InputCodes.RWin);
     }
 
     /// <summary>Periodic processing (gestures, AFK timers, stop-key gestures).</summary>

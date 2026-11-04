@@ -18,6 +18,13 @@ public interface IInputOutput
 
     /// <summary>Releases every key/button this output currently holds down.</summary>
     void ReleaseAll();
+
+    /// <summary>
+    /// Sends an unassigned "mask" key (vk 0xE8). Used when a hotkey key pressed together with Alt/Win
+    /// is swallowed: otherwise the game would see a lone Alt tap, enter the window (system) menu mode,
+    /// freeze, and beep on every following key press.
+    /// </summary>
+    void SendMenuMask();
 }
 
 /// <summary>Physical input state as observed by the global hooks.</summary>

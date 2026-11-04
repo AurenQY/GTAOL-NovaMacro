@@ -130,13 +130,7 @@ public sealed class OverlayService : IOverlayService
 
     private HudWindow EnsureHud()
     {
-        if (_hud is null)
-        {
-            _hud = new HudWindow(_host);
-            _hud.Show();
-        }
-
-        return _hud;
+        return _hud ??= new HudWindow(_host);
     }
 
     private static void Ui(Action action) => Application.Current?.Dispatcher.BeginInvoke(action);

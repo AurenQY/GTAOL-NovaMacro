@@ -53,6 +53,55 @@ public class RuntimeTests
     }
 
     [Fact]
+    public void SwallowedAltHotkeySendsMenuMaskSoGameNeverSeesLoneAlt()
+    {
+        var h = new Harness();
+        h.Tap(InputCodes.Letter('R'), InputCodes.LAlt);
+        Assert.Equal("Mask", h.Output.Events[0]);
+        h.WaitIdle(h.Runtime.Get<BuyAmmoFeature>()!);
+    }
+
+    [Fact]
+    public void ArrowKeysAndEnterTriggerNothingByDefault()
+    {
+        var h = new Harness();
+        foreach (var key in new[] { InputCodes.Up, InputCodes.Down, InputCodes.Left, InputCodes.Right, InputCodes.Enter, InputCodes.Backspace, InputCodes.Letter('M') })
+        {
+            h.Tap(key);
+        }
+
+        Thread.Sleep(100);
+        h.Runtime.Tick();
+        Assert.Empty(h.Output.Events);
+        Assert.DoesNotContain(h.Notifier.Messages, m => m.StartsWith("[热键]", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MacroWaitsForHotkeyModifierReleaseBeforeInjecting()
+    {
+        var h = new Harness();
+        h.Press(InputCodes.Letter('R'), InputCodes.LAlt);
+        Thread.Sleep(150);
+        Assert.DoesNotContain(h.Output.Events, e => e.StartsWith("D:", StringComparison.Ordinal));
+        h.Release(InputCodes.Letter('R'), InputCodes.LAlt);
+        h.WaitIdle(h.Runtime.Get<BuyAmmoFeature>()!);
+        Assert.Equal("M键", h.Output.Taps()[0]);
+    }
+
+    [Fact]
+    public void ModifierStillHeldIsReleasedForTheGame()
+    {
+        var h = new Harness();
+        h.Press(InputCodes.Letter('R'), InputCodes.LAlt);
+        h.WaitIdle(h.Runtime.Get<BuyAmmoFeature>()!);
+        var events = h.Output.Events;
+        var altUp = events.IndexOf("U:左Alt键");
+        Assert.True(altUp > 0);
+        Assert.True(altUp < events.IndexOf("D:M键"));
+        h.Release(InputCodes.Letter('R'), InputCodes.LAlt);
+    }
+
+    [Fact]
     public void DisabledFeatureDoesNothing()
     {
         var h = new Harness("[记忆开关]\n买满子弹=假\n");
@@ -182,7 +231,12 @@ public class RuntimeTests
     {
         var h = new Harness("[记忆开关]\n切换战局=真\n");
         Assert.False(h.Runtime.HandleInput(InputCodes.Digit(1), true));
+
+        // A stuck Esc state (no recent key-down event) must not trigger.
         h.State.Down.Add(InputCodes.Escape);
+        Assert.False(h.Runtime.HandleInput(InputCodes.Digit(1), true));
+
+        h.Runtime.HandleInput(InputCodes.Escape, true);
         Assert.True(h.Runtime.HandleInput(InputCodes.Digit(1), true));
         h.State.Down.Remove(InputCodes.Escape);
         h.WaitIdle(h.Runtime.Get<SwitchSessionFeature>()!);

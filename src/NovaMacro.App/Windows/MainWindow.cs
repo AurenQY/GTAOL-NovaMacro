@@ -46,6 +46,7 @@ public sealed class MainWindow : ThemedWindow
     private readonly TextBlock _lock = Status();
     private readonly Dictionary<FeatureId, (CheckBox Toggle, Button Hotkey)> _rows = new();
     private readonly Stopwatch _stopPress = new();
+    private readonly CheckBox _keepInTray = new();
     private ToolsWindow? _tools;
     private DebugWindow? _debug;
     private CustomMacroWindow? _custom;
@@ -258,6 +259,7 @@ public sealed class MainWindow : ThemedWindow
 
     private void RefreshRows()
     {
+        _keepInTray.IsChecked = App.Instance.KeepInTray;
         foreach (var (id, (toggle, hotkey)) in _rows)
         {
             var feature = FeatureCatalog.Get(id);
@@ -297,14 +299,25 @@ public sealed class MainWindow : ThemedWindow
             FontSize = 11,
             Foreground = Ui.Res("FgDim"),
             Margin = new Thickness(4, 2, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
         };
+        _keepInTray.Content = new TextBlock { Text = "关闭后保留在托盘", FontSize = 11, Foreground = Ui.Res("FgDim") };
+        _keepInTray.ToolTip = "勾选：关闭主界面后继续在托盘运行，热键仍然有效\n不勾选：关闭主界面即退出程序";
+        _keepInTray.IsChecked = App.Instance.KeepInTray;
+        _keepInTray.Checked += (_, _) => App.Instance.KeepInTray = true;
+        _keepInTray.Unchecked += (_, _) => App.Instance.KeepInTray = false;
+        _keepInTray.Margin = new Thickness(0, 2, 2, 0);
+        var hintRow = new DockPanel();
+        DockPanel.SetDock(_keepInTray, Dock.Right);
+        hintRow.Children.Add(_keepInTray);
+        hintRow.Children.Add(hint);
         return new Border
         {
             Background = Ui.Res("Panel"),
             BorderBrush = Ui.Res("Border"),
             BorderThickness = new Thickness(0, 1, 0, 0),
             Padding = new Thickness(8, 4, 8, 4),
-            Child = new StackPanel { Children = { bar, hint } },
+            Child = new StackPanel { Children = { bar, hintRow } },
         };
     }
 
@@ -333,13 +346,13 @@ public sealed class MainWindow : ThemedWindow
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         e.Cancel = true;
-        if (_host.Settings.GetString(Sec.Other, "退出方式") == "最小化到托盘")
+        if (App.Instance.KeepInTray)
         {
-            Hide();
+            App.Instance.HideToTray();
             return;
         }
 
-        if (Dialog.Confirm(this, "确定退出 NovaMacro？", "退出"))
+        if (Dialog.Confirm(this, "确定退出 NovaMacro？\n\n（勾选主界面底部的“关闭后保留在托盘”，关闭窗口时程序会继续在托盘运行）", "退出"))
         {
             App.Instance.ExitApp();
         }

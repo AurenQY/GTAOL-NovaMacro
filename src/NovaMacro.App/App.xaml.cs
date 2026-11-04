@@ -63,6 +63,44 @@ public partial class App : Application
         Shutdown();
     }
 
+    /// <summary>[其他设置] 退出方式 — closing the main window keeps NovaMacro running in the tray.</summary>
+    public bool KeepInTray
+    {
+        get => Host.Settings.GetString(Sec.Other, "退出方式") != "直接退出";
+        set => Host.Settings.Set(Sec.Other, "退出方式", value ? "最小化到托盘" : "直接退出");
+    }
+
+    private bool _trayHintShown;
+
+    /// <summary>Hides the main window to the tray (first time: shows a short balloon hint).</summary>
+    public void HideToTray()
+    {
+        Shell.Hide();
+        if (!_trayHintShown && _tray is not null)
+        {
+            _trayHintShown = true;
+            _tray.ShowBalloonTip(2500, "NovaMacro 仍在运行", "已最小化到托盘，热键依然有效。双击托盘图标重新打开主界面。", Forms.ToolTipIcon.Info);
+        }
+    }
+
+    private static System.Drawing.Icon LoadTrayIcon()
+    {
+        try
+        {
+            var info = GetResourceStream(new Uri("pack://application:,,,/Assets/NovaMacro.ico", UriKind.Absolute));
+            if (info is not null)
+            {
+                using var stream = info.Stream;
+                return new System.Drawing.Icon(stream, Forms.SystemInformation.SmallIconSize);
+            }
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or ArgumentException)
+        {
+        }
+
+        return System.Drawing.SystemIcons.Application;
+    }
+
     public void ShowMain()
     {
         Shell.Show();
@@ -82,17 +120,22 @@ public partial class App : Application
             BackColor = System.Drawing.Color.FromArgb(0x22, 0x26, 0x2E),
             ForeColor = System.Drawing.Color.FromArgb(0xE8, 0xEA, 0xF0),
             ShowImageMargin = false,
+            ShowCheckMargin = true,
         };
+        var keepInTray = new Forms.ToolStripMenuItem("关闭后保留在托盘") { CheckOnClick = true };
+        keepInTray.Click += (_, _) => KeepInTray = keepInTray.Checked;
+        menu.Opening += (_, _) => keepInTray.Checked = KeepInTray;
         menu.Items.Add("主界面", null, (_, _) => ShowMain());
         menu.Items.Add("小工具", null, (_, _) => Shell.OpenTools());
         menu.Items.Add("按键宏设置", null, (_, _) => Shell.OpenSettings(null));
         menu.Items.Add("调试输出窗口", null, (_, _) => Shell.OpenDebug());
         menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add(keepInTray);
         menu.Items.Add("退出", null, (_, _) => ExitApp());
         _tray = new Forms.NotifyIcon
         {
             Text = "NovaMacro",
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = LoadTrayIcon(),
             Visible = true,
             ContextMenuStrip = menu,
         };

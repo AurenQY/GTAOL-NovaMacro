@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using NovaMacro.Platform.Native;
 
 namespace NovaMacro.App.Controls;
@@ -12,8 +13,21 @@ namespace NovaMacro.App.Controls;
 /// </summary>
 public class ThemedWindow : Window
 {
+    private static readonly Lazy<ImageSource?> AppIcon = new(() =>
+    {
+        try
+        {
+            return BitmapFrame.Create(new Uri("pack://application:,,,/Assets/NovaMacro.ico", UriKind.Absolute));
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or NotSupportedException or UriFormatException)
+        {
+            return null;
+        }
+    });
+
     public ThemedWindow()
     {
+        Icon = AppIcon.Value;
         Background = Ui.Res("Bg");
         Foreground = Ui.Res("Fg");
         FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");

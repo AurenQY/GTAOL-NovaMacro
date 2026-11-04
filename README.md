@@ -22,6 +22,12 @@ NovaMacro 是一个面向 GTA Online（传承版 `GTA5.exe` / 增强版 `GTA5_En
 
 完整的“原软件功能 → NovaMacro 实现”对照与差异说明见 [docs/feature-parity.md](docs/feature-parity.md)。
 
+## 图标与托盘
+
+- 图标源文件：`assets/icon/NovaMacro.svg`（`assets/icon/build_icon.py` 可重新生成 `src/NovaMacro.App/Assets/NovaMacro.ico`）。
+- 主界面底部 / 托盘菜单的“关闭后保留在托盘”：勾选时关闭主界面后继续在托盘运行（热键有效，双击托盘图标重新打开）；
+  不勾选时关闭主界面即退出。对应 `Settings.ini` 中 `[其他设置] 退出方式`。
+
 ## 配置
 
 - 所有数据都集中在程序目录下的 `NovaMacro Config\` 文件夹：

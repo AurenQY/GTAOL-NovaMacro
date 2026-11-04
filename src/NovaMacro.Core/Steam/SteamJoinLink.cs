@@ -22,6 +22,19 @@ public sealed record SteamJoinLink(string Url, string Nickname, DateTime Obtaine
 
     public bool IsValid => AnyLink.IsMatch(Url);
 
+    /// <summary>
+    /// URL handed to Steam: '=' in the -steamjvp argument re-encoded as %3D, exactly like the
+    /// original tool ("…/-steamjvp%3D…%3D%3D"), so Steam's protocol handler keeps the token intact.
+    /// </summary>
+    public string LaunchUrl
+    {
+        get
+        {
+            var i = Url.IndexOf("-steamjvp", StringComparison.OrdinalIgnoreCase);
+            return i < 0 ? Url : Url[..i] + Url[i..].Replace("=", "%3D", StringComparison.Ordinal);
+        }
+    }
+
     public static SteamJoinLink? FromJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))

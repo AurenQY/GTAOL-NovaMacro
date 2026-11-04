@@ -183,6 +183,7 @@ public sealed class MacroRuntime
         var gameForeground = _services.Game.IsForeground;
         var imeBlocked = _services.Settings.GetBool(Sec.Switches, "输入法检测防误触") && gameForeground && !_services.Game.IsUsKeyboardLayout;
         var whitelist = _services.Settings.GetString(Sec.StopMacro, "宏锁定白名单");
+        var toolHotkeysAllowed = !_services.Settings.GetBool(Sec.Tools, "热键仅在窗口存在时可用") || _services.ToolsWindowOpen();
 
         foreach (var s in snapshot)
         {
@@ -193,7 +194,8 @@ public sealed class MacroRuntime
 
             var feature = s.Feature;
             var allowed = (gameForeground || feature.WorksInBackground) && !imeBlocked &&
-                          (!locked || feature.BypassLock || IsWhitelisted(whitelist, feature.Definition.Name) || feature.Definition.Group == FeatureGroup.Tool);
+                          (!locked || feature.BypassLock || IsWhitelisted(whitelist, feature.Definition.Name) || feature.Definition.Group == FeatureGroup.Tool) &&
+                          (feature.Definition.Group != FeatureGroup.Tool || toolHotkeysAllowed);
             if (!allowed)
             {
                 if (!isDown && feature.HotkeyHeld && code == s.Hotkey.Key)
@@ -230,7 +232,8 @@ public sealed class MacroRuntime
                     {
                         var feature = s.Feature;
                         if (!((gameForeground || feature.WorksInBackground) && !imeBlocked &&
-                              (!locked || feature.BypassLock || IsWhitelisted(whitelist, feature.Definition.Name) || feature.Definition.Group == FeatureGroup.Tool)))
+                              (!locked || feature.BypassLock || IsWhitelisted(whitelist, feature.Definition.Name) || feature.Definition.Group == FeatureGroup.Tool) &&
+                          (feature.Definition.Group != FeatureGroup.Tool || toolHotkeysAllowed)))
                         {
                             continue;
                         }
@@ -365,7 +368,10 @@ public sealed class MacroRuntime
     }
 
     /// <summary>Cancels every running macro and releases all synthesized input.</summary>
-    public void StopAll()
+    public void StopAll() => StopAll(notify: true);
+
+    /// <param name="notify">False for automatic stops (game exit, app exit): no tip/beep.</param>
+    public void StopAll(bool notify)
     {
         CancellationTokenSource old;
         lock (_gate)
@@ -382,7 +388,10 @@ public sealed class MacroRuntime
 
         _services.Input.Output.ReleaseAll();
         old.Dispose();
-        Notify("你停止了按键宏操作！", on: false);
+        if (notify)
+        {
+            Notify("你停止了按键宏操作！", on: false);
+        }
         Stopped?.Invoke(this, EventArgs.Empty);
     }
 

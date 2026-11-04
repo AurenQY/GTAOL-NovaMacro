@@ -135,4 +135,7 @@ public interface IAudioLevelMonitor
 
     /// <summary>Current peak level 0..1.</summary>
     float Level { get; }
+
+    /// <summary>Mutes (or restores) every audio session except the given process (听声法 静音其他进程).</summary>
+    void MuteOtherProcesses(int keepProcessId, bool mute);
 }

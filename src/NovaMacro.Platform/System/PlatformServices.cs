@@ -88,46 +88,79 @@ public static class GtaLocator
     }
 }
 
+/// <summary>
+/// 开机启动. NovaMacro requires administrator rights, and Windows silently skips elevated programs
+/// listed under the Run registry key, so a logon scheduled task with highest privileges is used.
+/// </summary>
 public static class AutoStart
 {
+    private const string TaskName = "NovaMacro";
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "NovaMacro";
 
-    public static void Set(bool enabled, string exePath)
+    public static CommandResult Set(bool enabled, string exePath)
     {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true) ?? Registry.CurrentUser.CreateSubKey(RunKey);
-        if (enabled)
+        // Remove the legacy Run entry written by earlier builds (it never worked for an elevated app).
+        using (var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true))
         {
-            key.SetValue(ValueName, "\"" + exePath + "\"");
+            key?.DeleteValue(TaskName, throwOnMissingValue: false);
         }
-        else
+
+        if (!enabled)
         {
-            key.DeleteValue(ValueName, throwOnMissingValue: false);
+            var del = CommandRunner.Run("schtasks.exe", $"/Delete /TN {TaskName} /F");
+            return del.Output.Contains("ERROR", StringComparison.OrdinalIgnoreCase) && !IsSet() ? new CommandResult(0, string.Empty) : del;
         }
+
+        var tr = CommandRunner.Quote("\"" + exePath + "\"");
+        return CommandRunner.Run("schtasks.exe", $"/Create /TN {TaskName} /TR {tr} /SC ONLOGON /RL HIGHEST /F");
     }
 
-    public static bool IsSet()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-        return key?.GetValue(ValueName) is not null;
-    }
+    public static bool IsSet() => CommandRunner.Run("schtasks.exe", $"/Query /TN {TaskName}").Success;
 }
 
-/// <summary>Beep tones (开启/关闭提示音) played off the caller's thread.</summary>
+/// <summary>Beep tones (开启/关闭提示音) with volume control, played off the caller's thread.</summary>
 public static class Beeper
 {
-    public static void Play(int frequency, int durationMs)
+    /// <param name="volumePercent">0..100, or -1 to use a moderate default level.</param>
+    public static void Play(int frequency, int durationMs, int volumePercent = -1)
     {
         frequency = Math.Clamp(frequency, 37, 32767);
         durationMs = Math.Clamp(durationMs, 1, 5000);
+        var gain = volumePercent < 0 ? 0.35f : Math.Clamp(volumePercent, 0, 100) / 100f;
+        if (gain <= 0)
+        {
+            return;
+        }
+
         _ = Task.Run(() =>
         {
             try
             {
-                Console.Beep(frequency, durationMs);
+                var generator = new NAudio.Wave.SampleProviders.SignalGenerator(44100, 1)
+                {
+                    Frequency = frequency,
+                    Gain = gain,
+                    Type = NAudio.Wave.SampleProviders.SignalGeneratorType.Sin,
+                };
+                var tone = new NAudio.Wave.SampleProviders.OffsetSampleProvider(generator) { TakeSamples = 44100 * durationMs / 1000 };
+                using var output = new NAudio.Wave.WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, 50);
+                output.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(tone));
+                output.Play();
+                var deadline = Environment.TickCount64 + durationMs + 500;
+                while (output.PlaybackState == NAudio.Wave.PlaybackState.Playing && Environment.TickCount64 < deadline)
+                {
+                    Thread.Sleep(20);
+                }
             }
-            catch (Exception ex) when (ex is PlatformNotSupportedException or IOException or InvalidOperationException)
+            catch (Exception)
             {
+                try
+                {
+                    Console.Beep(frequency, durationMs);
+                }
+                catch (Exception ex) when (ex is PlatformNotSupportedException or IOException or InvalidOperationException)
+                {
+                }
             }
         });
     }

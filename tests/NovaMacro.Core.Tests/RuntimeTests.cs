@@ -127,6 +127,81 @@ public class RuntimeTests
     }
 
     [Fact]
+    public void ToolHotkeysCanBeLimitedToTheToolsWindow()
+    {
+        var h = new Harness("[小工具配置]\n启用游戏断网热键=真\n热键仅在窗口存在时可用=真\n");
+        h.Tap(InputCodes.Function(6), InputCodes.LControl);
+        Thread.Sleep(50);
+        Assert.Empty(h.Tools.Calls);
+
+        h.ToolsOpen = true;
+        h.Tap(InputCodes.Function(6), InputCodes.LControl);
+        Harness.WaitFor(() => h.Tools.Calls.Contains("cut"));
+    }
+
+    [Fact]
+    public void VehicleControlAuxClickReturnsAndAuxDoubleClickRequests()
+    {
+        var h = new Harness("[记忆开关]\n载具启动=真\n");
+        var feature = h.Runtime.Get<VehicleControlFeature>()!;
+        h.State.Down.Add(InputCodes.CapsLock);
+        h.Tap(InputCodes.Letter('V'), InputCodes.LAlt);
+        Thread.Sleep(350);
+        h.Runtime.Tick();
+        h.WaitIdle(feature);
+        Assert.Contains(h.Notifier.Messages, m => m.Contains("收回载具"));
+
+        h.Tap(InputCodes.Letter('V'), InputCodes.LAlt);
+        h.Tap(InputCodes.Letter('V'), InputCodes.LAlt);
+        h.WaitIdle(feature);
+        Assert.Contains(h.Notifier.Messages, m => m.Contains("叫出载具"));
+        h.State.Down.Remove(InputCodes.CapsLock);
+
+        h.Tap(InputCodes.Letter('V'), InputCodes.LAlt);
+        Thread.Sleep(350);
+        h.Runtime.Tick();
+        h.WaitIdle(feature);
+        Assert.Contains(h.Notifier.Messages, m => m.Contains("控制引擎"));
+    }
+
+    [Fact]
+    public void SprintToggleReleasesSprintOutsideTheGame()
+    {
+        var h = new Harness("[记忆开关]\n奔跑切换=真\n");
+        var feature = h.Runtime.Get<SprintToggleFeature>()!;
+        h.Tap(InputCodes.Letter('X'), InputCodes.LAlt);
+        Harness.WaitFor(() => h.Output.Events.Contains("D:左shift键"));
+        h.Game.IsForeground = false;
+        Harness.WaitFor(() => h.Output.Events.Contains("U:左shift键"));
+        h.Game.IsForeground = true;
+        Harness.WaitFor(() => h.Output.Events.Count(e => e == "D:左shift键") == 2);
+        h.Tap(InputCodes.Letter('X'), InputCodes.LAlt);
+        h.WaitIdle(feature);
+        Assert.Equal("U:左shift键", h.Output.Events.Last(e => e.Contains("shift")));
+    }
+
+    [Fact]
+    public void ThrowableSlotFollowsGameBinding()
+    {
+        var h = new Harness();
+        h.Keys[Core.Game.GameAction.WeaponThrowable] = InputCodes.Letter('G');
+        h.Press(InputCodes.XButton1);
+        Harness.WaitFor(() => h.Output.Taps().Count >= 2);
+        h.Release(InputCodes.XButton1);
+        h.WaitIdle(h.Runtime.Get<WeaponJamFeature>()!);
+        Assert.Equal("G键", h.Output.Taps()[1]);
+    }
+
+    [Fact]
+    public void ExecutionHookBracketsEveryMacro()
+    {
+        var h = new Harness();
+        h.Tap(InputCodes.Letter('R'), InputCodes.LAlt);
+        h.WaitIdle(h.Runtime.Get<BuyAmmoFeature>()!);
+        Assert.Equal(0, h.Executing);
+    }
+
+    [Fact]
     public void DisabledFeatureDoesNothing()
     {
         var h = new Harness("[记忆开关]\n买满子弹=假\n");
@@ -302,7 +377,7 @@ public class RuntimeTests
         Thread.Sleep(350);
         h.Runtime.Tick();
         Harness.WaitFor(() => h.Urls.Opened.Count == 1);
-        Assert.StartsWith("steam://rungame/3240220/76561190000000000/", h.Urls.Opened[0]);
+        Assert.Equal("steam://rungame/3240220/76561190000000000/-steamjvp%3DQUJDRA%3D%3D", h.Urls.Opened[0]);
         h.WaitIdle(feature);
         Assert.Contains("回车键", h.Output.Taps());
     }

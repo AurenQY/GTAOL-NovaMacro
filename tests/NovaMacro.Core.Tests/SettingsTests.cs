@@ -182,6 +182,26 @@ public class SettingsStoreTests
     }
 
     [Fact]
+    public void ToolHotkeysUseTheOriginalFlatLayout()
+    {
+        var store = new SettingsStore(new IniDocument());
+        var kill = FeatureCatalog.Get(FeatureId.KillGame);
+        Assert.Equal(new Hotkey(InputCodes.Function(5), ModifierMask.Ctrl), store.GetHotkey(kill));
+        store.SetHotkey(kill, new Hotkey(InputCodes.Function(4), ModifierMask.Alt));
+        Assert.Equal("115", store.GetString(Sec.Tools, "结束进程热键"));
+        Assert.Equal("4", store.GetString(Sec.Tools, "结束进程热键功能键"));
+        Assert.Equal(new Hotkey(InputCodes.Function(4), ModifierMask.Alt), store.GetHotkey(kill));
+
+        // Original tool file
+        var original = new SettingsStore(IniDocument.Parse("[小工具配置]\n游戏卡单热键=120\n游戏卡单热键功能键=1\n游戏卡单热键副键=0\n"));
+        Assert.Equal(new Hotkey(InputCodes.Function(9), ModifierMask.Ctrl), original.GetHotkey(FeatureCatalog.Get(FeatureId.SoloSession)));
+
+        // Earlier NovaMacro 2.0 layout still read
+        var legacy = new SettingsStore(IniDocument.Parse("[游戏限速热键]\n键=121\n功能键=2\n副键=0\n"));
+        Assert.Equal(new Hotkey(InputCodes.Function(10), ModifierMask.Shift), legacy.GetHotkey(FeatureCatalog.Get(FeatureId.SpeedLimit)));
+    }
+
+    [Fact]
     public void BooleansUseChineseTrueFalse()
     {
         Assert.True(SettingValues.ToBool("真"));

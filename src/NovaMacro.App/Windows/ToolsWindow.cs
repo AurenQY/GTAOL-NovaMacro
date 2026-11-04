@@ -28,9 +28,14 @@ public sealed class ToolsWindow : ThemedWindow
     private readonly TextBox _chatInput = new() { Width = 180 };
     private readonly TextBlock _linkStatus = Ui.Text("连接状态：未连接", dim: true);
 
+    /// <summary>Read from the input-hook thread, so it is a plain flag rather than a WPF property.</summary>
+    public static volatile bool IsOpen;
+
     public ToolsWindow(AppHost host)
     {
         _host = host;
+        IsVisibleChanged += (_, _) => IsOpen = IsVisible;
+        Closed += (_, _) => IsOpen = false;
         Title = "小工具";
         SizeToContent = SizeToContent.WidthAndHeight;
         ResizeMode = ResizeMode.CanMinimize;

@@ -33,7 +33,7 @@ public sealed class AppNotifier : INotifier
     {
         var s = _host.Settings;
         var prefix = on ? "开启" : "关闭";
-        Beeper.Play(s.GetInt(Sec.Tools, prefix + "提示音音频值"), s.GetInt(Sec.Tools, prefix + "提示音持续时间"));
+        Beeper.Play(s.GetInt(Sec.Tools, prefix + "提示音音频值"), s.GetInt(Sec.Tools, prefix + "提示音持续时间"), s.GetInt(Sec.Device, "蜂鸣提示音量"));
     }
 
     public void ShowMessage(string title, string message)

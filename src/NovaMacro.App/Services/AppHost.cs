@@ -69,12 +69,15 @@ public sealed class AppHost : IDisposable
             Steam = Steam,
             DataFolder = DataFolder,
             Keys = () => KeyMap,
+            ToolsWindowOpen = () => Windows.ToolsWindow.IsOpen,
+            ExecutionActive = TimerResolution.SetActive,
         };
 
         EnsureStarterMacros();
         Runtime = new MacroRuntime(Services, FeatureFactory.CreateBuiltIn().Concat(LoadCustomFeatures()));
 
-        Hook.Handler = (code, down, repeat) => !CaptureMode && Runtime.HandleInput(code, down, repeat);
+        // While a hotkey is being captured, swallow keys so they do not also reach the dialog/other apps.
+        Hook.Handler = (code, down, repeat) => CaptureMode || Runtime.HandleInput(code, down, repeat);
         Hook.BlockWinKey = () => Settings.GetBool(Sec.Switches, "释放WIN键") && Game.IsForeground;
         Link.LinkTriggered += (_, m) => ExecuteLink(m.Kind);
         Settings.Changed += OnSettingChanged;
@@ -129,8 +132,18 @@ public sealed class AppHost : IDisposable
 
     public void Start()
     {
-        Tools.CleanupAll();
         Hook.Start();
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                Tools.CleanupStale();
+            }
+            catch (Exception ex)
+            {
+                Log.Write("[启动清理] " + ex.Message);
+            }
+        });
         if (Settings.GetBool(Sec.Other, "自适应延时"))
         {
             StartFps();
@@ -220,7 +233,7 @@ public sealed class AppHost : IDisposable
         _tickTimer.Dispose();
         _watchTimer.Dispose();
         _saveTimer.Dispose();
-        Runtime.StopAll();
+        Runtime.StopAll(notify: false);
         Hook.Dispose();
         Output.ReleaseAll();
         Link.Dispose();
@@ -275,6 +288,15 @@ public sealed class AppHost : IDisposable
         else if (e.Section == Sec.Other && e.Key == "保存日志")
         {
             UpdateLogFile();
+        }
+        else if (e.Section == Sec.Switches && e.Key == "启用开机启动")
+        {
+            var enabled = Settings.GetBool(Sec.Switches, "启用开机启动");
+            _ = Task.Run(() =>
+            {
+                var r = AutoStart.Set(enabled, Environment.ProcessPath!);
+                Log.Write(r.Success ? (enabled ? "[开机启动] 已启用（任务计划，管理员权限）" : "[开机启动] 已关闭") : "[开机启动] 设置失败：" + r.Output);
+            });
         }
         else if (e.Section == Sec.KeyOverrides || (e.Section == Sec.Switches && e.Key == "优先读取游戏辅助键位"))
         {
@@ -335,7 +357,7 @@ public sealed class AppHost : IDisposable
     private void OnGameExited()
     {
         Log.Write("[游戏] 游戏已退出");
-        Runtime.StopAll();
+        Runtime.StopAll(notify: false);
         Tools.CleanupAll();
         if (Settings.GetBool(Sec.Switches, "启用同步退出"))
         {

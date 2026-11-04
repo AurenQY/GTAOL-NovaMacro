@@ -163,7 +163,7 @@ public sealed class MapTeleportFeature : MacroFeature
             return false;
         }
 
-        ctx.Services.Urls.Open(link.Url);
+        ctx.Services.Urls.Open(link.LaunchUrl);
         ctx.Tip($"{prefix} 已发送加入 【{(link.Nickname.Length > 0 ? link.Nickname : botKey)}】 战局链接");
         return true;
     }
@@ -262,6 +262,12 @@ public sealed class MapTeleportFeature : MacroFeature
             return true;
         }
 
+        var muteOthers = ctx.Settings.GetBool(Sec.MapTeleport, "静音其他进程");
+        if (muteOthers)
+        {
+            audio.MuteOtherProcesses(ctx.Services.Game.ProcessId, true);
+        }
+
         try
         {
             var threshold = ctx.Settings.GetInt(Sec.MapTeleport, "听声阈值") / 100f;
@@ -292,6 +298,11 @@ public sealed class MapTeleportFeature : MacroFeature
         }
         finally
         {
+            if (muteOthers)
+            {
+                audio.MuteOtherProcesses(0, false);
+            }
+
             audio.Stop();
         }
     }

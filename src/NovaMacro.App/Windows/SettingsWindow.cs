@@ -205,6 +205,13 @@ public sealed class SettingsWindow : ThemedWindow
                 return Ui.Row(swatch, colorBox, pick);
             case SettingKind.Int:
                 var num = new TextBox { Text = s.GetInt(d.Section, d.Key).ToString(), Width = 90, HorizontalAlignment = HorizontalAlignment.Left };
+                num.TextChanged += (_, _) =>
+                {
+                    if (int.TryParse(num.Text, out var v) && v >= d.Min && v <= d.Max)
+                    {
+                        s.SetInt(d.Section, d.Key, v);
+                    }
+                };
                 num.LostFocus += (_, _) =>
                 {
                     if (int.TryParse(num.Text, out var v))
@@ -217,7 +224,7 @@ public sealed class SettingsWindow : ThemedWindow
                 return num;
             default:
                 var text = new TextBox { Text = s.GetString(d.Section, d.Key), MinWidth = 120 };
-                text.LostFocus += (_, _) => s.Set(d.Section, d.Key, text.Text);
+                text.TextChanged += (_, _) => s.Set(d.Section, d.Key, text.Text);
                 return text;
         }
     }
@@ -316,11 +323,7 @@ public sealed class SettingsWindow : ThemedWindow
                     })));
                 break;
             case Sec.Switches:
-                panel.Children.Add(Ui.Row(Ui.Btn("应用开机启动设置", () =>
-                {
-                    AutoStart.Set(_host.Settings.GetBool(Sec.Switches, "启用开机启动"), Environment.ProcessPath!);
-                    Dialog.Show(this, "设置完成！");
-                })));
+                panel.Children.Add(Ui.Text("开机启动通过 Windows 任务计划（管理员权限）实现，勾选后立即生效。", dim: true, size: 11));
                 break;
             case Sec.Crosshair:
                 panel.Children.Add(new CrosshairEditor(_host));
@@ -375,7 +378,7 @@ public sealed class SettingsWindow : ThemedWindow
                     {
                         if (link is not null)
                         {
-                            new ShellUrlLauncher().Open(link.Url);
+                            new ShellUrlLauncher().Open(link.LaunchUrl);
                         }
                     })));
             panel.Children.Add(Ui.Card(group, key));

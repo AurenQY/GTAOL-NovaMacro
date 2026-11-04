@@ -33,6 +33,12 @@ public sealed class MacroServices
 
     public ISteamClient? Steam { get; init; }
 
+    /// <summary>True while the 小工具 window is open ([小工具配置] 热键仅在窗口存在时可用).</summary>
+    public Func<bool> ToolsWindowOpen { get; init; } = () => true;
+
+    /// <summary>Called with true/false when a macro starts/stops executing (timer resolution).</summary>
+    public Action<bool>? ExecutionActive { get; init; }
+
     /// <summary>Folder that holds Settings.ini, CustomMacro\, MapTeleportBot\ …</summary>
     public required string DataFolder { get; init; }
 

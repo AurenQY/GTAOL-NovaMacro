@@ -31,6 +31,11 @@ public sealed class CasinoHeistFeature : MacroFeature
             var bounds = services.Game.ClientBounds;
             ctx.Log($"开始匹配！（{bounds.Width}x{bounds.Height}）");
             var frame = services.Screen.Capture(bounds);
+            if (ctx.Settings.GetString(Sec.Casino, "处理方式") == "文件处理")
+            {
+                // Keep the captured frame for checking/adjusting the layout.
+                services.Screen.SaveImage(frame, Path.Combine(services.DataFolder, "Casino_fingerprint.bmp"));
+            }
             var hashes = new List<ulong>();
             for (var i = 0; i < CasinoFingerprintSolver.Columns * CasinoFingerprintSolver.Rows; i++)
             {

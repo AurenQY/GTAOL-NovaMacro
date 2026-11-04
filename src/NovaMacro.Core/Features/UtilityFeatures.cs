@@ -149,13 +149,29 @@ public sealed class AfkFeature : MacroFeature
             var hold = s.GetString(Sec.Other, "挂机方法") == "按住";
             var interval = s.GetInt(Sec.Other, "挂机点击间隔");
             ctx.Tip($"[挂机] 已开始 | {(hold ? "按住" : "点击")} {KeyNames.GetName(key)} | 间隔：{interval}");
+            var held = false;
             try
             {
                 if (hold)
                 {
-                    ctx.Input.DownCode(key);
+                    // Keep the key held only while GTA is in the foreground.
                     while (_active)
                     {
+                        var foreground = ctx.Services.Game.IsForeground;
+                        if (foreground != held)
+                        {
+                            if (foreground)
+                            {
+                                ctx.Input.DownCode(key);
+                            }
+                            else
+                            {
+                                ctx.Input.UpCode(key);
+                            }
+
+                            held = foreground;
+                        }
+
                         ctx.Wait(-100);
                     }
                 }
@@ -174,7 +190,7 @@ public sealed class AfkFeature : MacroFeature
             }
             finally
             {
-                if (hold)
+                if (held)
                 {
                     ctx.Input.UpCode(key);
                 }

@@ -35,8 +35,26 @@ public class ThemedWindow : Window
         UseLayoutRounding = true;
         SnapsToDevicePixels = true;
         TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+        Loaded += (_, _) => ApplyScale();
         SourceInitialized += (_, _) =>
             WindowHelper.UseDarkTitleBar(new WindowInteropHelper(this).Handle, 0x00181412, 0x00F0EAE8, 0x003B312C);
+    }
+
+    /// <summary>[此设备已使用] 界面自适应缩放 (percent).</summary>
+    private void ApplyScale()
+    {
+        var host = (Application.Current as App)?.Host;
+        if (host is null || Content is not FrameworkElement content)
+        {
+            return;
+        }
+
+        var percent = host.Settings.GetInt(NovaMacro.Core.Settings.Sec.Device, "界面自适应缩放");
+        if (percent != 100)
+        {
+            var f = percent / 100.0;
+            content.LayoutTransform = new ScaleTransform(f, f);
+        }
     }
 }
 

@@ -103,26 +103,28 @@ public sealed class VehicleControlFeature : MacroFeature
         var aux = S.IsAuxDown;
         Start(ctx =>
         {
-            string path;
+            string op;
             if (aux)
             {
-                var op = ctx.Settings.GetString(Sec.MenuSnack, "载具启动操作");
-                path = op switch
-                {
-                    "控制车门" => "控制车门路径",
-                    "控制全部" => "控制全部路径",
-                    _ => "控制引擎路径",
-                };
-                ctx.Log(op == "叫出/收回" ? "控制引擎" : op);
+                // Original: aux + click returns the vehicle, aux + double click requests it.
+                op = gesture == PressGesture.DoubleClick ? "叫出载具" : "收回载具";
             }
             else
             {
-                path = "叫出载具路径";
-                ctx.Log(gesture == PressGesture.DoubleClick ? "收回载具" : "叫出载具");
+                op = ctx.Settings.GetString(Sec.MenuSnack, "载具启动操作");
             }
 
+            var path = op switch
+            {
+                "控制车门" => "控制车门路径",
+                "控制全部" => "控制全部路径",
+                "叫出载具" => "叫出载具路径",
+                "收回载具" => "收回载具路径",
+                _ => "控制引擎路径",
+            };
+            ctx.Log(op);
             var steps = MenuRunner.Load(ctx.Settings, path).ToList();
-            if (aux && ctx.Settings.GetBool(Sec.MenuSnack, "载具启动停留引擎界面") && steps.Count > 0 && steps[^1].Action == GameAction.InteractionMenu)
+            if (op == "控制引擎" && ctx.Settings.GetBool(Sec.MenuSnack, "载具启动停留引擎界面") && steps.Count > 0 && steps[^1].Action == GameAction.InteractionMenu)
             {
                 steps.RemoveAt(steps.Count - 1);
             }
@@ -180,7 +182,7 @@ public sealed class ServiceVehicleFeature : MacroFeature
             if (vehicle == "个人载具")
             {
                 ctx.Log(gesture == PressGesture.DoubleClick ? "送回个人载具" : "呼叫个人载具");
-                MenuRunner.Run(ctx, "叫出载具路径");
+                MenuRunner.Run(ctx, gesture == PressGesture.DoubleClick ? "收回载具路径" : "叫出载具路径");
                 return;
             }
 

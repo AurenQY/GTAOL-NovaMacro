@@ -75,7 +75,21 @@ public class SettingsStoreTests
         Assert.Equal(700, store.GetInt(Sec.Phone, "手机_呼出后延迟"));
         Assert.Equal(1500, store.GetInt(Sec.DelayClimb, "自动打开相机时间"));
         Assert.Equal("hh:mm:ss|:iii", store.GetString(Sec.Hud, "计时器时间格式"));
-        Assert.Contains("steam://rungame/3240220/", store.GetString(Sec.MapTeleport, "Steam_一号BOT"));
+    }
+
+    [Fact]
+    public void BundledDefaultsContainNoPersonalData()
+    {
+        var defaults = SettingsStore.LoadBundledDefaults().ToString();
+        foreach (var forbidden in new[] { "steam://", "Steam_一号BOT", "Steam_二号BOT", "联动昵称", "游戏文件夹路径", "窗口位置记忆", "主界面=", "已使用", "RegistryBackup", @":\" })
+        {
+            Assert.DoesNotContain(forbidden, defaults);
+        }
+
+        var store = new SettingsStore(new IniDocument());
+        Assert.Equal("玩家", store.GetString(Sec.Tools, "联动昵称"));
+        Assert.Equal(string.Empty, store.GetString(Sec.Device, "游戏文件夹路径"));
+        Assert.Equal(string.Empty, store.GetString(Sec.MapTeleport, "Steam_一号BOT"));
     }
 
     [Fact]
@@ -128,6 +142,43 @@ public class SettingsStoreTests
         var back = store.GetHotkey(feature);
         Assert.Equal(new Hotkey(InputCodes.Letter('Q'), ModifierMask.Ctrl | ModifierMask.Shift, InputCodes.CapsLock), back);
         Assert.True(raised >= 1);
+    }
+
+    [Fact]
+    public void CachedValuesAreInvalidatedOnWrite()
+    {
+        var store = new SettingsStore(new IniDocument());
+        Assert.Equal(700, store.GetInt(Sec.WeaponJam, "懒人速射间隔"));
+        store.SetInt(Sec.WeaponJam, "懒人速射间隔", 640);
+        Assert.Equal(640, store.GetInt(Sec.WeaponJam, "懒人速射间隔"));
+        store.Remove(Sec.WeaponJam, "懒人速射间隔");
+        Assert.Equal(700, store.GetInt(Sec.WeaponJam, "懒人速射间隔"));
+        store.Set(Sec.WeaponJam, "宏模式", "单次切枪");
+        store.ResetSection(Sec.WeaponJam);
+        Assert.Equal("自动速射", store.GetString(Sec.WeaponJam, "宏模式"));
+    }
+
+    [Fact]
+    public async Task ConcurrentReadsDuringWritesAreSafe()
+    {
+        var store = new SettingsStore(new IniDocument());
+        var stop = false;
+        var reader = Task.Run(() =>
+        {
+            while (!Volatile.Read(ref stop))
+            {
+                _ = store.GetInt(Sec.WeaponJam, "按键延迟");
+                _ = store.GetBool(Sec.Switches, "武器卡弹");
+            }
+        });
+        for (var i = 0; i < 2000; i++)
+        {
+            store.SetInt(Sec.WeaponJam, "按键延迟", 20 + (i % 5));
+        }
+
+        Volatile.Write(ref stop, true);
+        await reader;
+        Assert.Equal(24, store.GetInt(Sec.WeaponJam, "按键延迟"));
     }
 
     [Fact]

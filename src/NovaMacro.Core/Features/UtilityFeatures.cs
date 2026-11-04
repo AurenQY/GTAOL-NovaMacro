@@ -22,14 +22,28 @@ public sealed class SwitchSessionFeature : MacroFeature
         _ => null,
     };
 
+    private long _pauseDownAt = long.MinValue / 2;
+
     public override bool OnInput(InputEventArgs e)
     {
+        if (e.Code == S.Input.Code(GameAction.Pause) || e.Code == InputCodes.PadMenu)
+        {
+            if (e.IsDown && !e.IsRepeat)
+            {
+                _pauseDownAt = e.Timestamp;
+            }
+
+            return false;
+        }
+
         if (!e.IsDown || e.IsRepeat)
         {
             return false;
         }
 
-        var pauseHeld = S.InputState.IsDown(S.Input.Code(GameAction.Pause)) || S.InputState.IsDown(InputCodes.PadMenu);
+        // Only while the pause key is genuinely being held (guards against a stuck key state).
+        var pauseHeld = (S.InputState.IsDown(S.Input.Code(GameAction.Pause)) || S.InputState.IsDown(InputCodes.PadMenu)) &&
+                        e.Timestamp - _pauseDownAt < 5000;
         var session = pauseHeld ? SessionFor(e.Code) : null;
         if (session is null)
         {

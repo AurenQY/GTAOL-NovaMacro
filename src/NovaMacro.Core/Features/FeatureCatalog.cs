@@ -96,7 +96,7 @@ public static class FeatureCatalog
             "开启后按设定间隔点击/按住挂机键位防止被踢出战局\n空闲挂机：游戏在前台且超过设定时间无操作时自动按一次挂机键", "其他设置"),
         new(FeatureId.CasinoHeist, "赌场豪劫", FeatureGroup.Macro, "赌场豪劫", false, "赌场豪劫热键", new Hotkey(InputCodes.Function(9)),
             "在指纹破解界面触发热键来自动进行指纹匹配\n在其他界面触发则显示捕获的门禁密码", "赌场豪劫设置"),
-        new(FeatureId.CayoPerico, "佩里科岛", FeatureGroup.Macro, "佩里科岛", false, "佩里科岛热键", new Hotkey(InputCodes.Function(10)),
+        new(FeatureId.CayoPerico, "佩里科岛", FeatureGroup.Macro, "佩里科岛", false, "佩里科岛热键", new Hotkey(InputCodes.Function(11)),
             "在指纹破解界面触发热键来自动进行指纹匹配\n在飞机上（地图缩小状态并有紫色标点）触发则开始自动梅杜莎飞行，可再次按住热键来紧急停止", "佩里科岛设置"),
         new(FeatureId.MapTeleport, "地图差传", FeatureGroup.Macro, "地图差传", false, "地图差传热键", new Hotkey(InputCodes.Function(7)),
             "差传方法：BOT法 / 听声法 / 读秒法\nBOT法：通过 Steam 战局链接或好友列表加入 BOT 战局完成差传", "地图差传设置"),

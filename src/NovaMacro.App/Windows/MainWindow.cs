@@ -1,27 +1,52 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using NovaMacro.App.Controls;
 using NovaMacro.App.Services;
 using NovaMacro.Core.Features;
 using NovaMacro.Core.Game;
-using NovaMacro.Core.Input;
 using NovaMacro.Core.Settings;
 using NovaMacro.Platform.SystemTools;
 
 namespace NovaMacro.App.Windows;
 
-/// <summary>主界面 — feature switches, hotkeys and entry points to every other window.</summary>
-public sealed class MainWindow : Window
+/// <summary>
+/// 主界面 — like the original tool: every switch on one compact, fixed-size screen (no scrolling).
+/// Hover a row for help, click the hotkey to change it, right-click a row to open its settings.
+/// </summary>
+public sealed class MainWindow : ThemedWindow
 {
+    private const double ColumnWidth = 236;
+    private const double RowHeight = 23;
+
+    private static readonly (string Title, FeatureId[] Ids)[][] Columns =
+    {
+        new[]
+        {
+            ("武器", new[] { FeatureId.WeaponJam, FeatureId.AutoClick, FeatureId.WheelSnack, FeatureId.WeaponSwapSpeed }),
+            ("M 菜单", new[] { FeatureId.BuyAmmo, FeatureId.MenuSnack, FeatureId.VehicleControl, FeatureId.ServiceVehicle }),
+        },
+        new[]
+        {
+            ("移动与视角", new[] { FeatureId.QuickPerspective, FeatureId.AdSpeed, FeatureId.SprintToggle, FeatureId.DelayClimb, FeatureId.InstantHover }),
+            ("战局与差传", new[] { FeatureId.SwitchSession, FeatureId.MapTeleport, FeatureId.JobTeleport }),
+        },
+        new[]
+        {
+            ("抢劫", new[] { FeatureId.CasinoHeist, FeatureId.CayoPerico }),
+            ("其他", new[] { FeatureId.PhoneCall, FeatureId.EnterAlternative, FeatureId.Afk, FeatureId.Screenshot, FeatureId.Crosshair }),
+        },
+    };
+
     private readonly AppHost _host;
-    private readonly TextBlock _status = Ui.Text(string.Empty, dim: true);
-    private readonly TextBlock _lock = Ui.Text(string.Empty);
+    private readonly TextBlock _game = Status();
+    private readonly TextBlock _admin = Status();
+    private readonly TextBlock _lock = Status();
     private readonly Dictionary<FeatureId, (CheckBox Toggle, Button Hotkey)> _rows = new();
     private readonly Stopwatch _stopPress = new();
+    private readonly CheckBox _keepInTray = new();
     private ToolsWindow? _tools;
     private DebugWindow? _debug;
     private CustomMacroWindow? _custom;
@@ -29,34 +54,65 @@ public sealed class MainWindow : Window
     public MainWindow(AppHost host)
     {
         _host = host;
-        Title = "NovaMacro · GTA 按键宏";
-        Width = 860;
-        Height = 720;
-        MinWidth = 720;
-        MinHeight = 520;
+        Title = "NovaMacro";
+        SizeToContent = SizeToContent.WidthAndHeight;
+        ResizeMode = ResizeMode.CanMinimize;
         WindowPositions.Restore(this, host.Settings, "主界面");
 
-        var root = new DockPanel { LastChildFill = true };
-        var header = new DockPanel { Margin = new Thickness(10, 8, 10, 4) };
-        header.Children.Add(Ui.Text("NovaMacro", size: 22, weight: FontWeights.Bold));
-        var right = Ui.Col(_status, _lock);
-        right.HorizontalAlignment = HorizontalAlignment.Right;
-        DockPanel.SetDock(right, Dock.Right);
-        header.Children.Insert(0, right);
-        DockPanel.SetDock(header, Dock.Top);
-        root.Children.Add(header);
+        var root = new DockPanel();
 
+        // ---- title strip ----
+        var strip = new DockPanel { Margin = new Thickness(10, 6, 10, 2) };
+        var status = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        status.Children.Add(_game);
+        status.Children.Add(_admin);
+        status.Children.Add(_lock);
+        DockPanel.SetDock(status, Dock.Right);
+        strip.Children.Add(status);
+        strip.Children.Add(new TextBlock
+        {
+            Inlines =
+            {
+                new System.Windows.Documents.Run("NovaMacro") { FontWeight = FontWeights.Bold, FontSize = 15 },
+                new System.Windows.Documents.Run("  2.0") { Foreground = Ui.Res("FgDim"), FontSize = 11 },
+            },
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        DockPanel.SetDock(strip, Dock.Top);
+        root.Children.Add(strip);
+
+        // ---- footer ----
         var footer = BuildFooter();
         DockPanel.SetDock(footer, Dock.Bottom);
         root.Children.Add(footer);
 
-        var grid = new UniformGrid { Columns = 2, Margin = new Thickness(6) };
-        foreach (var feature in FeatureCatalog.All.Where(f => f.Group == FeatureGroup.Macro))
+        // ---- switches: three fixed columns ----
+        var columns = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 6, 6) };
+        foreach (var column in Columns)
         {
-            grid.Children.Add(BuildFeatureCard(feature));
+            var col = new StackPanel { Width = ColumnWidth, Margin = new Thickness(2, 0, 2, 0) };
+            foreach (var (title, ids) in column)
+            {
+                col.Children.Add(GroupCaption(title));
+                foreach (var id in ids)
+                {
+                    col.Children.Add(BuildRow(FeatureCatalog.Get(id)));
+                }
+            }
+
+            columns.Children.Add(new Border
+            {
+                Background = Ui.Res("Panel"),
+                BorderBrush = Ui.Res("Border"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(4, 2, 4, 4),
+                Margin = new Thickness(2),
+                Child = col,
+            });
         }
 
-        root.Children.Add(new ScrollViewer { Content = grid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        root.Children.Add(columns);
         Content = root;
 
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -65,14 +121,15 @@ public sealed class MainWindow : Window
         host.Runtime.LockChanged += (_, _) => Dispatcher.BeginInvoke(UpdateStatus);
         host.Settings.Changed += (_, e) =>
         {
-            if (e.Section == Sec.Switches || e.Section.EndsWith("热键", StringComparison.Ordinal))
+            if (e.Section == Sec.Switches || e.Section == Sec.Other || e.Section.EndsWith("热键", StringComparison.Ordinal))
             {
                 Dispatcher.BeginInvoke(RefreshRows);
             }
         };
         UpdateStatus();
         Closing += OnClosing;
-        LocationChanged += (_, _) => WindowPositions.Save(this, host.Settings, "主界面");
+        Deactivated += (_, _) => WindowPositions.Save(this, host.Settings, "主界面");
+        Closing += (_, _) => WindowPositions.Save(this, host.Settings, "主界面");
     }
 
     public void OpenTools() => Dispatcher.Invoke(() => Show(ref _tools, () => new ToolsWindow(_host)));
@@ -83,7 +140,12 @@ public sealed class MainWindow : Window
 
     public void OpenSettings(string? section) => Dispatcher.Invoke(() =>
     {
-        var w = new SettingsWindow(_host, section) { Owner = this };
+        var w = new SettingsWindow(_host, section);
+        if (IsVisible)
+        {
+            w.Owner = this;
+        }
+
         w.Show();
     });
 
@@ -96,74 +158,108 @@ public sealed class MainWindow : Window
         }
 
         window.Show();
+        if (window.WindowState == WindowState.Minimized)
+        {
+            window.WindowState = WindowState.Normal;
+        }
+
         window.Activate();
     }
 
-    private Border BuildFeatureCard(FeatureDefinition feature)
+    private static TextBlock Status() => new() { FontSize = 11, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+
+    private static FrameworkElement GroupCaption(string title)
+    {
+        var bar = new Border { Width = 3, Height = 11, CornerRadius = new CornerRadius(1.5), Background = Ui.Res("Accent"), Margin = new Thickness(2, 0, 6, 0) };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Height = 20, Margin = new Thickness(0, 2, 0, 0) };
+        panel.Children.Add(bar);
+        panel.Children.Add(new TextBlock { Text = title, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Ui.Res("FgDim"), VerticalAlignment = VerticalAlignment.Center });
+        return panel;
+    }
+
+    private Border BuildRow(FeatureDefinition feature)
     {
         var toggle = new CheckBox
         {
-            Content = Ui.Text(feature.Name, size: 14, weight: FontWeights.SemiBold),
+            Content = new TextBlock { Text = feature.Name, FontSize = 12 },
             IsChecked = _host.Settings.IsFeatureOn(feature),
-            ToolTip = feature.Help,
+            Margin = new Thickness(4, 0, 0, 0),
         };
         toggle.Checked += (_, _) => _host.Settings.SetFeatureOn(feature, true);
         toggle.Unchecked += (_, _) => _host.Settings.SetFeatureOn(feature, false);
 
+        var configurable = feature.HotkeySection is not null;
         var hotkey = new Button
         {
-            MinWidth = 150,
-            ToolTip = feature.HotkeySection is null ? "该功能由固定组合触发" : "点击修改热键，右键恢复默认",
-            IsEnabled = feature.HotkeySection is not null,
+            Style = Ui.Style("LinkButton"),
+            Content = HotkeyText(feature),
+            ToolTip = configurable ? "点击修改热键，右键恢复默认" : "固定组合触发，点击打开相关设置",
+            Foreground = configurable ? Ui.Res("AccentHover") : Ui.Res("FgDim"),
         };
-        hotkey.Content = HotkeyText(feature);
         hotkey.Click += (_, _) =>
         {
+            if (!configurable)
+            {
+                if (feature.SettingsSection is not null)
+                {
+                    OpenSettings(feature.SettingsSection);
+                }
+
+                return;
+            }
+
             var captured = HotkeyCaptureWindow.Capture(this, _host, "设置热键 - " + feature.Name);
             if (captured is { } h)
             {
                 _host.Settings.SetHotkey(feature, h);
             }
         };
-        hotkey.MouseRightButtonUp += (_, _) => _host.Settings.SetHotkey(feature, feature.DefaultHotkey);
-
-        var settings = Ui.Btn("设置", () => OpenSettings(feature.SettingsSection), tip: "打开该功能的设置");
-        settings.IsEnabled = feature.SettingsSection is not null;
-
-        var dock = new DockPanel();
-        var buttons = Ui.Row(hotkey, settings);
-        DockPanel.SetDock(buttons, Dock.Right);
-        dock.Children.Add(buttons);
-        dock.Children.Add(toggle);
-
-        var help = Ui.Text(feature.Help.Split('\n')[0], dim: true, size: 11);
-        var card = Ui.Card(Ui.Col(dock, help));
-        card.ToolTip = feature.Help;
-        card.MouseRightButtonUp += (_, e) =>
+        hotkey.MouseRightButtonUp += (_, e) =>
         {
-            if (feature.SettingsSection is not null && e.OriginalSource is not Button)
+            if (configurable)
+            {
+                _host.Settings.SetHotkey(feature, feature.DefaultHotkey);
+            }
+
+            e.Handled = true;
+        };
+
+        var grid = new Grid { Height = RowHeight };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(hotkey, 1);
+        grid.Children.Add(toggle);
+        grid.Children.Add(hotkey);
+
+        var row = new Border { Background = Brushes.Transparent, CornerRadius = new CornerRadius(3), Child = grid, ToolTip = feature.Help + (feature.SettingsSection is null ? string.Empty : "\n\n右键打开设置") };
+        row.MouseEnter += (_, _) => row.Background = Ui.Res("Hover");
+        row.MouseLeave += (_, _) => row.Background = Brushes.Transparent;
+        row.MouseRightButtonUp += (_, e) =>
+        {
+            if (!e.Handled && feature.SettingsSection is not null)
             {
                 OpenSettings(feature.SettingsSection);
             }
         };
         _rows[feature.Id] = (toggle, hotkey);
-        return card;
+        return row;
     }
 
     private string HotkeyText(FeatureDefinition feature) => feature.Id switch
     {
-        FeatureId.AutoClick => "大写键 + 双击左键",
-        FeatureId.WheelSnack => "Tab轮盘 + 零食键",
+        FeatureId.AutoClick => "大写 + 双击左键",
+        FeatureId.WheelSnack => "Tab + 零食键",
         FeatureId.WeaponSwapSpeed => _host.Runtime.Get<WeaponSwapSpeedFeature>()?.Chord.ToString() ?? "未设置",
-        FeatureId.AdSpeed => "Shift + W + E",
-        FeatureId.InstantHover => "大写键 + 角色键",
+        FeatureId.AdSpeed => "Shift+W+E",
+        FeatureId.InstantHover => "大写 + 角色键",
         FeatureId.SwitchSession => "Esc + 1/2/3",
         FeatureId.EnterAlternative => "Ctrl + 空格",
-        _ => _host.Settings.GetHotkey(feature).ToString(),
+        _ => _host.Settings.GetHotkey(feature).ToString().Replace("键", string.Empty).Replace(" + ", "+"),
     };
 
     private void RefreshRows()
     {
+        _keepInTray.IsChecked = App.Instance.KeepInTray;
         foreach (var (id, (toggle, hotkey)) in _rows)
         {
             var feature = FeatureCatalog.Get(id);
@@ -174,7 +270,7 @@ public sealed class MainWindow : Window
 
     private FrameworkElement BuildFooter()
     {
-        var stop = new Button { Content = "一键停止", ToolTip = "单击停止按键宏操作，长按锁定/解锁按键宏", Style = (Style)FindResource("AccentButton") };
+        var stop = new Button { Content = "一键停止", ToolTip = "单击停止按键宏操作，长按锁定/解锁按键宏", Style = Ui.Style("AccentButton"), MinWidth = 76 };
         stop.PreviewMouseLeftButtonDown += (_, _) => _stopPress.Restart();
         stop.PreviewMouseLeftButtonUp += (_, _) =>
         {
@@ -188,54 +284,76 @@ public sealed class MainWindow : Window
             }
         };
 
-        var bar = new WrapPanel { Margin = new Thickness(8, 4, 8, 4) };
+        var bar = new StackPanel { Orientation = Orientation.Horizontal };
         bar.Children.Add(stop);
         bar.Children.Add(Ui.Btn("小工具", OpenTools));
         bar.Children.Add(Ui.Btn("自定义宏", OpenCustomMacros));
         bar.Children.Add(Ui.Btn("按键宏设置", () => OpenSettings(null)));
-        bar.Children.Add(Ui.Btn("调试输出窗口", OpenDebug));
+        bar.Children.Add(Ui.Btn("调试窗口", OpenDebug));
         bar.Children.Add(Ui.Btn("游戏键位", ShowKeyMap, tip: "查看从 GTA 设置读取的键位"));
-        bar.Children.Add(Ui.Btn("打开配置文件夹", () => Process.Start(new ProcessStartInfo(_host.DataFolder) { UseShellExecute = true })));
+        bar.Children.Add(Ui.Btn("配置文件夹", () => Process.Start(new ProcessStartInfo(_host.DataFolder) { UseShellExecute = true })));
 
-        var hint = Ui.Text("* 鼠标悬停查看提示，右键跳转相应设置。NovaMacro 只模拟键鼠输入与系统网络规则，不读写游戏内存；使用风险自负。", dim: true, size: 11);
-        var panel = Ui.Col(bar, hint);
-        panel.Margin = new Thickness(6, 0, 6, 8);
-        return panel;
+        var hint = new TextBlock
+        {
+            Text = "* 鼠标悬停查看提示，右键跳转相应设置",
+            FontSize = 11,
+            Foreground = Ui.Res("FgDim"),
+            Margin = new Thickness(4, 2, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _keepInTray.Content = new TextBlock { Text = "关闭后保留在托盘", FontSize = 11, Foreground = Ui.Res("FgDim") };
+        _keepInTray.ToolTip = "勾选：关闭主界面后继续在托盘运行，热键仍然有效\n不勾选：关闭主界面即直接退出程序（不再询问）";
+        _keepInTray.IsChecked = App.Instance.KeepInTray;
+        _keepInTray.Checked += (_, _) => App.Instance.KeepInTray = true;
+        _keepInTray.Unchecked += (_, _) => App.Instance.KeepInTray = false;
+        _keepInTray.Margin = new Thickness(0, 2, 2, 0);
+        var hintRow = new DockPanel();
+        DockPanel.SetDock(_keepInTray, Dock.Right);
+        hintRow.Children.Add(_keepInTray);
+        hintRow.Children.Add(hint);
+        return new Border
+        {
+            Background = Ui.Res("Panel"),
+            BorderBrush = Ui.Res("Border"),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Padding = new Thickness(8, 4, 8, 4),
+            Child = new StackPanel { Children = { bar, hintRow } },
+        };
     }
 
     private void ShowKeyMap()
     {
         var game = _host.Game;
-        var info = _host.KeyMap.Describe() +
-                   $"\r\n\r\n游戏进程PID：{game.ProcessId}\r\n游戏窗口句柄：{game.Handle}\r\n游戏窗口内宽高：{game.ClientBounds.Width} x {game.ClientBounds.Height}";
-        MessageBox.Show(this, info, "游戏键位", MessageBoxButton.OK, MessageBoxImage.Information);
+        var info = _host.KeyMap.Describe() + $"\r\n\r\n游戏窗口内宽高：{game.ClientBounds.Width} x {game.ClientBounds.Height}";
+        Dialog.Show(this, info, "游戏键位");
     }
 
     private void UpdateStatus()
     {
         var game = _host.Game;
-        var admin = CommandRunner.IsElevated ? "管理员" : "非管理员";
-        _status.Text = game.IsRunning
-            ? $"GTAV {GtaInstall.DisplayName(game.Edition)} · PID {game.ProcessId} · {admin}"
-            : $"游戏未运行 · {admin}";
-        _lock.Text = _host.Runtime.IsLocked ? "按键宏已锁定" : "按键宏可正常触发";
-        _lock.Foreground = Ui.Res(_host.Runtime.IsLocked ? "Bad" : "Good");
-        Title = _host.Runtime.IsLocked ? "NovaMacro · 已锁定" : "NovaMacro · GTA 按键宏";
+        SetStatus(_game, game.IsRunning ? $"● GTAV {GtaInstall.DisplayName(game.Edition)}" : "● 游戏未运行", game.IsRunning ? "Good" : "FgDim");
+        SetStatus(_admin, CommandRunner.IsElevated ? "● 管理员" : "● 非管理员", CommandRunner.IsElevated ? "Good" : "Warn");
+        SetStatus(_lock, _host.Runtime.IsLocked ? "● 已锁定" : "● 可触发", _host.Runtime.IsLocked ? "Bad" : "Accent");
+        Title = _host.Runtime.IsLocked ? "NovaMacro · 已锁定" : "NovaMacro";
+    }
+
+    private static void SetStatus(TextBlock block, string text, string brush)
+    {
+        block.Text = text;
+        block.Foreground = Ui.Res(brush);
     }
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         e.Cancel = true;
-        if (_host.Settings.GetString(Sec.Other, "退出方式") == "最小化到托盘")
+        if (App.Instance.KeepInTray)
         {
-            Hide();
+            App.Instance.HideToTray();
             return;
         }
 
-        if (MessageBox.Show(this, "确定退出 NovaMacro？", "退出", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
-        {
-            App.Instance.ExitApp();
-        }
+        // The user turned "关闭后保留在托盘" off on purpose: exit without asking again.
+        App.Instance.ExitApp();
     }
 }
 

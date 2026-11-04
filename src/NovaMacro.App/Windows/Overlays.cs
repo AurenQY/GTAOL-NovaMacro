@@ -49,57 +49,71 @@ public abstract class OverlayWindow : Window
     }
 }
 
-/// <summary>HUD辅助 — tool tips and the stopwatch timer drawn over the game.</summary>
+/// <summary>
+/// HUD辅助 — tool tips and the stopwatch timer. The window is only as large as its text and is
+/// hidden when idle: a full-screen layered window over the game costs a lot of GPU/CPU time.
+/// </summary>
 public sealed class HudWindow : OverlayWindow
 {
-    private readonly Canvas _canvas = new();
+    private readonly StackPanel _stack = new();
     private readonly Border _tip;
     private readonly TextBlock _tipText;
     private readonly Border _timer;
     private readonly TextBlock _timerMain;
     private readonly TextBlock _timerSuffix;
-    private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromMilliseconds(33) };
+    private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private readonly DispatcherTimer _hide = new();
     private readonly Stopwatch _stopwatch = new();
 
     public HudWindow(AppHost host)
         : base(host)
     {
-        _tipText = new TextBlock { Foreground = Brushes.White, FontFamily = new FontFamily("Microsoft YaHei"), TextWrapping = TextWrapping.Wrap, MaxWidth = 700 };
-        _tip = new Border { Background = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 6, 10, 6), Child = _tipText, Opacity = 0 };
+        SizeToContent = SizeToContent.WidthAndHeight;
+        _tipText = new TextBlock { Foreground = Brushes.White, FontFamily = new FontFamily("Microsoft YaHei UI"), TextWrapping = TextWrapping.Wrap, MaxWidth = 560 };
+        _tip = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(190, 18, 20, 24)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(160, 76, 141, 255)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(9, 5, 9, 5),
+            Child = _tipText,
+            Visibility = Visibility.Collapsed,
+        };
         _timerMain = new TextBlock { Foreground = Brushes.White, FontFamily = new FontFamily("Consolas"), FontWeight = FontWeights.Bold };
         _timerSuffix = new TextBlock { Foreground = Brushes.White, FontFamily = new FontFamily("Consolas"), VerticalAlignment = VerticalAlignment.Bottom };
         _timer = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0)),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(10, 4, 10, 4),
+            Background = new SolidColorBrush(Color.FromArgb(170, 18, 20, 24)),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(9, 3, 9, 3),
+            Margin = new Thickness(0, 4, 0, 0),
             Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { _timerMain, _timerSuffix } },
             Visibility = Visibility.Collapsed,
         };
-        _canvas.Children.Add(_tip);
-        _canvas.Children.Add(_timer);
-        Content = _canvas;
+        _stack.Children.Add(_tip);
+        _stack.Children.Add(_timer);
+        Content = _stack;
         _clock.Tick += (_, _) => UpdateTimer();
         _hide.Tick += (_, _) =>
         {
             _hide.Stop();
-            FadeTo(0);
+            HideTip();
         };
-        Loaded += (_, _) => Follow();
+        SizeChanged += (_, _) => Place();
     }
 
     public bool TimerRunning => _stopwatch.IsRunning;
 
     public void ShowTip(string message)
     {
-        Follow();
         var s = Host.Settings;
         _tipText.Text = message;
         _tipText.FontSize = s.GetInt(Sec.Hud, "提示字号");
-        _tip.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        Place(_tip, s.GetString(Sec.Hud, "小工具提示位置"));
-        FadeTo(1);
+        _tip.BeginAnimation(OpacityProperty, null);
+        _tip.Opacity = 1;
+        _tip.Visibility = Visibility.Visible;
+        ShowWindow();
         _hide.Stop();
         if (s.GetString(Sec.Hud, "提示显示方式") != "常亮")
         {
@@ -110,21 +124,60 @@ public sealed class HudWindow : OverlayWindow
 
     public void ToggleTimer()
     {
-        Follow();
         if (_stopwatch.IsRunning)
         {
             _stopwatch.Stop();
             _clock.Stop();
-            UpdateTimer();
-            ShowTip("[计时器] 已停止：" + TimerFormat.FormatFlat(_stopwatch.Elapsed, Host.Settings.GetString(Sec.Hud, "计时器时间格式")));
+            var text = TimerFormat.FormatFlat(_stopwatch.Elapsed, Host.Settings.GetString(Sec.Hud, "计时器时间格式"));
             _stopwatch.Reset();
             _timer.Visibility = Visibility.Collapsed;
+            ShowTip("[计时器] 已停止：" + text);
             return;
         }
 
         _stopwatch.Restart();
         _timer.Visibility = Visibility.Visible;
+        UpdateTimer();
+        ShowWindow();
         _clock.Start();
+    }
+
+    private void HideTip()
+    {
+        if (Host.Settings.GetString(Sec.Hud, "提示显示方式") == "渐隐渐现")
+        {
+            var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(250));
+            fade.Completed += (_, _) => CollapseTip();
+            _tip.BeginAnimation(OpacityProperty, fade);
+        }
+        else
+        {
+            CollapseTip();
+        }
+    }
+
+    private void CollapseTip()
+    {
+        if (_hide.IsEnabled)
+        {
+            return;
+        }
+
+        _tip.Visibility = Visibility.Collapsed;
+        if (_timer.Visibility != Visibility.Visible)
+        {
+            Hide();
+        }
+    }
+
+    private void ShowWindow()
+    {
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        Place();
     }
 
     private void UpdateTimer()
@@ -132,60 +185,35 @@ public sealed class HudWindow : OverlayWindow
         var s = Host.Settings;
         var limit = s.GetInt(Sec.Hud, "计时器超时时间");
         var (main, suffix) = TimerFormat.Format(_stopwatch.Elapsed, s.GetString(Sec.Hud, "计时器时间格式"));
-        var size = s.GetInt(Sec.Hud, "提示字号") * 1.4;
+        var size = s.GetInt(Sec.Hud, "提示字号") * 1.3;
         _timerMain.FontSize = size;
         _timerSuffix.FontSize = size * 0.6;
         _timerMain.Text = main;
         _timerSuffix.Text = suffix;
-        var over = limit > 0 && _stopwatch.Elapsed.TotalSeconds >= limit;
-        _timerMain.Foreground = over ? Brushes.OrangeRed : Brushes.White;
-        _timer.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        Place(_timer, s.GetString(Sec.Hud, "计时器位置"));
+        _timerMain.Foreground = limit > 0 && _stopwatch.Elapsed.TotalSeconds >= limit ? Brushes.OrangeRed : Brushes.White;
     }
 
-    private void Follow()
+    private void Place()
     {
+        if (!IsVisible)
+        {
+            return;
+        }
+
         var r = TargetBounds();
-        Left = r.X;
-        Top = r.Y;
-        Width = Math.Max(100, r.Width);
-        Height = Math.Max(100, r.Height);
-    }
-
-    private void Place(FrameworkElement element, string position)
-    {
-        const double m = 20;
-        var w = element.DesiredSize.Width;
-        var h = element.DesiredSize.Height;
-        var (x, y) = position switch
+        const double m = 16;
+        var w = ActualWidth;
+        var h = ActualHeight;
+        var (x, y) = Host.Settings.GetString(Sec.Hud, "小工具提示位置") switch
         {
-            "右上角" => (Width - w - m, m),
-            "左下角" => (m, Height - h - m),
-            "右下角" => (Width - w - m, Height - h - m),
-            "顶部居中" => ((Width - w) / 2, m),
-            _ => (m, m),
+            "右上角" => (r.Right - w - m, r.Top + m),
+            "左下角" => (r.Left + m, r.Bottom - h - m),
+            "右下角" => (r.Right - w - m, r.Bottom - h - m),
+            "顶部居中" => (r.Left + ((r.Width - w) / 2), r.Top + m),
+            _ => (r.Left + m, r.Top + m),
         };
-        if (ReferenceEquals(element, _timer) && position == Host.Settings.GetString(Sec.Hud, "小工具提示位置"))
-        {
-            y += _tip.DesiredSize.Height + 8;
-        }
-
-        Canvas.SetLeft(element, x);
-        Canvas.SetTop(element, y);
-    }
-
-    private void FadeTo(double opacity)
-    {
-        var mode = Host.Settings.GetString(Sec.Hud, "提示显示方式");
-        if (mode == "渐隐渐现")
-        {
-            _tip.BeginAnimation(OpacityProperty, new DoubleAnimation(opacity, TimeSpan.FromMilliseconds(250)));
-        }
-        else
-        {
-            _tip.BeginAnimation(OpacityProperty, null);
-            _tip.Opacity = opacity;
-        }
+        Left = x;
+        Top = y;
     }
 }
 

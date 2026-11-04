@@ -53,6 +53,80 @@ public class RuntimeTests
     }
 
     [Fact]
+    public void SwallowedAltHotkeySendsMenuMaskSoGameNeverSeesLoneAlt()
+    {
+        var h = new Harness();
+        h.Tap(InputCodes.Letter('R'), InputCodes.LAlt);
+        Assert.Equal("Mask", h.Output.Events[0]);
+        h.WaitIdle(h.Runtime.Get<BuyAmmoFeature>()!);
+    }
+
+    [Fact]
+    public void ArrowKeysAndEnterTriggerNothingByDefault()
+    {
+        var h = new Harness();
+        foreach (var key in new[] { InputCodes.Up, InputCodes.Down, InputCodes.Left, InputCodes.Right, InputCodes.Enter, InputCodes.Backspace, InputCodes.Letter('M') })
+        {
+            h.Tap(key);
+        }
+
+        Thread.Sleep(100);
+        h.Runtime.Tick();
+        Assert.Empty(h.Output.Events);
+        Assert.DoesNotContain(h.Notifier.Messages, m => m.StartsWith("[热键]", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MacroWaitsForHotkeyModifierReleaseBeforeInjecting()
+    {
+        var h = new Harness();
+        h.Press(InputCodes.Letter('R'), InputCodes.LAlt);
+        Thread.Sleep(150);
+        Assert.DoesNotContain(h.Output.Events, e => e.StartsWith("D:", StringComparison.Ordinal));
+        h.Release(InputCodes.Letter('R'), InputCodes.LAlt);
+        h.WaitIdle(h.Runtime.Get<BuyAmmoFeature>()!);
+        Assert.Equal("M键", h.Output.Taps()[0]);
+    }
+
+    [Fact]
+    public void ModifierStillHeldIsReleasedForTheGame()
+    {
+        var h = new Harness();
+        h.Press(InputCodes.Letter('R'), InputCodes.LAlt);
+        h.WaitIdle(h.Runtime.Get<BuyAmmoFeature>()!);
+        var events = h.Output.Events;
+        var altUp = events.IndexOf("U:左Alt键");
+        Assert.True(altUp > 0);
+        Assert.True(altUp < events.IndexOf("D:M键"));
+        h.Release(InputCodes.Letter('R'), InputCodes.LAlt);
+    }
+
+    [Fact]
+    public void InputRoutingIsCheapPerKeyPress()
+    {
+        // The keyboard hook calls HandleInput for every key press on the whole PC; it must stay in
+        // the low-microsecond range so typing in other applications is never delayed.
+        var h = new Harness();
+        for (var i = 0; i < 2000; i++)
+        {
+            h.Runtime.HandleInput(InputCodes.Letter('K'), true);
+            h.Runtime.HandleInput(InputCodes.Letter('K'), false);
+        }
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        const int n = 20000;
+        for (var i = 0; i < n; i++)
+        {
+            h.Runtime.HandleInput(InputCodes.Letter('K'), true);
+            h.Runtime.HandleInput(InputCodes.Letter('K'), false);
+        }
+
+        var perEventMicroseconds = sw.Elapsed.TotalMilliseconds * 1000 / (2 * n);
+        Assert.True(perEventMicroseconds < 50, $"HandleInput took {perEventMicroseconds:0.0} µs per event");
+        Assert.Empty(h.Output.Events);
+    }
+
+    [Fact]
     public void DisabledFeatureDoesNothing()
     {
         var h = new Harness("[记忆开关]\n买满子弹=假\n");
@@ -182,7 +256,12 @@ public class RuntimeTests
     {
         var h = new Harness("[记忆开关]\n切换战局=真\n");
         Assert.False(h.Runtime.HandleInput(InputCodes.Digit(1), true));
+
+        // A stuck Esc state (no recent key-down event) must not trigger.
         h.State.Down.Add(InputCodes.Escape);
+        Assert.False(h.Runtime.HandleInput(InputCodes.Digit(1), true));
+
+        h.Runtime.HandleInput(InputCodes.Escape, true);
         Assert.True(h.Runtime.HandleInput(InputCodes.Digit(1), true));
         h.State.Down.Remove(InputCodes.Escape);
         h.WaitIdle(h.Runtime.Get<SwitchSessionFeature>()!);
@@ -217,15 +296,27 @@ public class RuntimeTests
     [Fact]
     public void MapTeleportSendsBotLinkThenConfirms()
     {
-        var h = new Harness("[记忆开关]\n地图差传=真\n[地图差传设置]\n确认时限=1\n");
+        var h = new Harness("[记忆开关]\n地图差传=真\n[地图差传设置]\n确认时限=1\nSteam_一号BOT={\"链接\":\"steam://rungame/3240220/76561190000000000/-steamjvp=QUJDRA==\",\"昵称\":\"测试\",\"获取时间\":\"2026-01-02 03:04:05\"}\n");
         var feature = h.Runtime.Get<MapTeleportFeature>()!;
         h.Tap(InputCodes.Function(7));
         Thread.Sleep(350);
         h.Runtime.Tick();
         Harness.WaitFor(() => h.Urls.Opened.Count == 1);
-        Assert.StartsWith("steam://rungame/3240220/76561199074735990/", h.Urls.Opened[0]);
+        Assert.StartsWith("steam://rungame/3240220/76561190000000000/", h.Urls.Opened[0]);
         h.WaitIdle(feature);
         Assert.Contains("回车键", h.Output.Taps());
+    }
+
+    [Fact]
+    public void MapTeleportWithoutSavedLinkDoesNothing()
+    {
+        var h = new Harness("[记忆开关]\n地图差传=真\n");
+        h.Tap(InputCodes.Function(7));
+        Thread.Sleep(350);
+        h.Runtime.Tick();
+        h.WaitIdle(h.Runtime.Get<MapTeleportFeature>()!);
+        Assert.Empty(h.Urls.Opened);
+        Assert.Contains(h.Notifier.Messages, m => m.Contains("没有读取战局链接"));
     }
 
     [Fact]

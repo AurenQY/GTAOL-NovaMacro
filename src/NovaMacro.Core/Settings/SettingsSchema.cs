@@ -45,8 +45,11 @@ public static class SettingsSchema
 
     public static IEnumerable<string> SectionOrder => All.Select(d => d.Section).Distinct();
 
+    private static readonly Dictionary<(string, string), SettingDescriptor> Index =
+        All.GroupBy(d => (d.Section, d.Key)).ToDictionary(g => g.Key, g => g.First());
+
     public static SettingDescriptor? Find(string section, string key) =>
-        All.FirstOrDefault(d => d.Section == section && d.Key == key);
+        Index.TryGetValue((section, key), out var d) ? d : null;
 
     private static List<SettingDescriptor> Build()
     {
@@ -232,7 +235,7 @@ public static class SettingsSchema
         // ---------------- 其他设置 ----------------
         var o = Sec.Other;
         K(o, "辅助触发键", InputCodes.CapsLock, "辅助/特殊触发键", "按住该键配合热键触发辅助功能（默认大写键）");
-        C(o, "退出方式", "最小化到托盘", "退出方式", new[] { "最小化到托盘", "直接退出" }, "启用后关闭软件将最小化到托盘");
+        C(o, "退出方式", "最小化到托盘", "关闭主界面时", new[] { "最小化到托盘", "直接退出" }, "最小化到托盘：关闭主界面后继续在托盘运行，热键仍然有效（双击托盘图标重新打开）\n直接退出：关闭主界面即退出程序");
         C(o, "快速零食侧键", "按住键位触发", "快速零食触发", new[] { "按住键位触发", "侧键上", "侧键下" },
             "可在武器轮盘里进行快速吃零食\n必须打开Tab轮盘，之后可按住读取的零食键或设置的侧键");
         B(o, "快速零食穿护甲", false, "快速零食同时穿护甲");
@@ -290,7 +293,7 @@ public static class SettingsSchema
         I(t, "关闭提示音持续时间", 500, "关闭提示音持续时间(毫秒)", null, 1, 5000);
         B(t, "隐藏调试操作消息框", false, "隐藏调试操作消息框");
         B(t, "默认启动", false, "启动时打开小工具窗口");
-        T(t, "联动昵称", Environment.MachineName, "联动昵称");
+        T(t, "联动昵称", "玩家", "联动昵称", "联动房间中显示给其他成员的名称，请勿填写真实信息");
         I(t, "房间端口", 19730, "房间端口", null, 1, 65535);
         T(t, "联动IP", "127.0.0.1:19730", "联动IP(地址:端口)");
         T(t, "黑名单列表", "{}", "联动黑名单", hidden: true);

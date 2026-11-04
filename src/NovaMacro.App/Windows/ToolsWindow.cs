@@ -15,39 +15,46 @@ using NovaMacro.Platform.SystemTools;
 namespace NovaMacro.App.Windows;
 
 /// <summary>小工具 — system tools, session password lock, firewall state, link room and timer.</summary>
-public sealed class ToolsWindow : Window
+public sealed class ToolsWindow : ThemedWindow
 {
     private readonly AppHost _host;
     private readonly Dictionary<FeatureId, Button> _toolButtons = new();
-    private readonly TextBox _password = new() { MinWidth = 220 };
-    private readonly ComboBox _stored = new() { MinWidth = 220 };
+    private readonly TextBox _password = new() { Width = 150 };
+    private readonly ComboBox _stored = new() { Width = 150 };
     private readonly TextBlock _lockInfo = Ui.Text(string.Empty, dim: true);
     private readonly StackPanel _firewall = new() { Orientation = Orientation.Horizontal };
-    private readonly ListBox _members = new() { Height = 110 };
-    private readonly TextBox _chatLog = new() { IsReadOnly = true, Height = 120, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-    private readonly TextBox _chatInput = new() { MinWidth = 260 };
+    private readonly ListBox _members = new() { Height = 210, Margin = new Thickness(2) };
+    private readonly TextBox _chatLog = new() { IsReadOnly = true, Height = 210, VerticalContentAlignment = VerticalAlignment.Top, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private readonly TextBox _chatInput = new() { Width = 180 };
     private readonly TextBlock _linkStatus = Ui.Text("连接状态：未连接", dim: true);
 
     public ToolsWindow(AppHost host)
     {
         _host = host;
         Title = "小工具";
-        Width = 760;
-        Height = 760;
+        SizeToContent = SizeToContent.WidthAndHeight;
+        ResizeMode = ResizeMode.CanMinimize;
         WindowPositions.Restore(this, host.Settings, "小工具");
-        LocationChanged += (_, _) => WindowPositions.Save(this, host.Settings, "小工具");
+        Deactivated += (_, _) => WindowPositions.Save(this, host.Settings, "小工具");
+        Closing += (_, _) => WindowPositions.Save(this, host.Settings, "小工具");
 
-        var panel = new StackPanel { Margin = new Thickness(6) };
-        panel.Children.Add(BuildTools());
-        panel.Children.Add(BuildSessionLock());
-        panel.Children.Add(BuildFirewall());
-        panel.Children.Add(BuildLink());
-        panel.Children.Add(Ui.Card(Ui.Row(
-            Ui.Btn("开始/停止计时器", host.Overlays.ToggleTimer),
-            Ui.Btn("显示/隐藏外置准星", host.Overlays.ToggleCrosshair),
-            Ui.Btn("小工具设置", () => new SettingsWindow(host, Sec.Tools) { Owner = this }.Show()),
-            Ui.Btn("HUD设置", () => new SettingsWindow(host, Sec.Hud) { Owner = this }.Show())), "HUD辅助"));
-        Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var left = new StackPanel { Width = 430 };
+        left.Children.Add(BuildTools());
+        left.Children.Add(BuildSessionLock());
+        left.Children.Add(BuildFirewall());
+        left.Children.Add(Ui.Card(new WrapPanel
+        {
+            Children =
+            {
+                Ui.Btn("计时器", host.Overlays.ToggleTimer, tip: "开始/停止 HUD 计时器"),
+                Ui.Btn("外置准星", host.Overlays.ToggleCrosshair, tip: "显示/隐藏外置准星"),
+                Ui.Btn("小工具设置", () => new SettingsWindow(host, Sec.Tools) { Owner = this }.Show()),
+                Ui.Btn("HUD设置", () => new SettingsWindow(host, Sec.Hud) { Owner = this }.Show()),
+            },
+        }, "HUD辅助"));
+        var right = new StackPanel { Width = 380 };
+        right.Children.Add(BuildLink());
+        Content = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4), Children = { left, right } };
 
         host.Tools.StateChanged += (_, _) => Dispatcher.BeginInvoke(UpdateTools);
         host.Link.Status += OnLinkStatus;
@@ -69,28 +76,30 @@ public sealed class ToolsWindow : Window
 
     private Border BuildTools()
     {
-        var wrap = new WrapPanel();
+        var wrap = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3 };
         foreach (var id in new[] { FeatureId.KillGame, FeatureId.NetworkCut, FeatureId.SoloSession, FeatureId.SessionLock, FeatureId.SpeedLimit })
         {
             var def = FeatureCatalog.Get(id);
-            var button = new Button { MinWidth = 130, ToolTip = def.Help };
+            var button = new Button { ToolTip = def.Help };
             button.Click += (_, _) => RunTool(id);
             _toolButtons[id] = button;
 
-            var enable = new CheckBox { Content = Ui.Text("热键 " + _host.Settings.GetHotkey(def), size: 11), IsChecked = _host.Settings.GetBool(Sec.Tools, "启用" + def.Name + "热键") };
+            var enable = new CheckBox { Content = Ui.Text(_host.Settings.GetHotkey(def).ToString().Replace("键", string.Empty), dim: true, size: 11, wrap: false), ToolTip = "启用该工具的热键", IsChecked = _host.Settings.GetBool(Sec.Tools, "启用" + def.Name + "热键") };
             enable.Checked += (_, _) => _host.Settings.SetBool(Sec.Tools, "启用" + def.Name + "热键", true);
             enable.Unchecked += (_, _) => _host.Settings.SetBool(Sec.Tools, "启用" + def.Name + "热键", false);
-            wrap.Children.Add(Ui.Card(Ui.Col(button, enable)));
+            var cell = Ui.Col(button, enable);
+            cell.Margin = new Thickness(2, 0, 2, 4);
+            wrap.Children.Add(cell);
         }
 
         return Ui.Card(Ui.Col(
             wrap,
-            Ui.Text($"断网方法：{_host.Settings.GetString(Sec.Tools, "游戏断网方法")} · 规则：{_host.Settings.GetString(Sec.Tools, "断网规则")} · 卡单：{_host.Settings.GetString(Sec.Tools, "游戏卡单方法")} {_host.Settings.GetInt(Sec.Tools, "游戏卡单时间")}秒（可在小工具设置中修改）", dim: true, size: 11)), "游戏工具");
+            Ui.Text($"断网：{_host.Settings.GetString(Sec.Tools, "游戏断网方法")} / {_host.Settings.GetString(Sec.Tools, "断网规则")} · 卡单：{_host.Settings.GetString(Sec.Tools, "游戏卡单方法")} {_host.Settings.GetInt(Sec.Tools, "游戏卡单时间")}秒", dim: true, size: 11)), "游戏工具");
     }
 
     private void RunTool(FeatureId id)
     {
-        if (id == FeatureId.KillGame && MessageBox.Show(this, "确定结束进程？", "确定操作？", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        if (id == FeatureId.KillGame && !Dialog.Confirm(this, "确定结束进程？", "确定操作？"))
         {
             return;
         }
@@ -143,13 +152,13 @@ public sealed class ToolsWindow : Window
             }
         };
         var row1 = Ui.Row(Ui.Text("密码"), _password,
-            Ui.Btn("随机密码", () => _password.Text = SessionLockFile.RandomPassword(_host.Settings.GetInt(Sec.Tools, "随机密码长度")), tip: "随机密码长度可在小工具设置中修改"),
-            Ui.Btn("添加战局锁", AddLock, accent: true),
-            Ui.Btn("移除战局锁", RemoveLock));
-        var row2 = Ui.Row(Ui.Text("已存储"), _stored, Ui.Btn("存储当前密码", StorePassword), Ui.Btn("删除存储密码", DeleteStored));
-        return Ui.Card(Ui.Col(
-            row1, row2, _lockInfo,
-            Ui.Text("战局锁会在游戏目录写入 x64\\data\\startup.meta，相同密码的玩家会被匹配进同一个公开战局。修改后需要重新登录游戏。", dim: true, size: 11)), "战局锁");
+            Ui.Btn("随机", () => _password.Text = SessionLockFile.RandomPassword(_host.Settings.GetInt(Sec.Tools, "随机密码长度")), tip: "随机密码长度可在小工具设置中修改"),
+            Ui.Btn("添加", AddLock, accent: true, tip: "添加战局锁（需重新登录游戏）"),
+            Ui.Btn("移除", RemoveLock, tip: "移除战局锁（需重新登录游戏）"));
+        var row2 = Ui.Row(Ui.Text("存储"), _stored, Ui.Btn("存储当前", StorePassword), Ui.Btn("删除", DeleteStored));
+        var card = Ui.Card(Ui.Col(row1, row2, _lockInfo), "战局锁");
+        card.ToolTip = "战局锁会在游戏目录写入 x64\\data\\startup.meta，相同密码的玩家会被匹配进同一个公开战局。修改后需要重新登录游戏。";
+        return card;
     }
 
     private string? GameFolder
@@ -199,7 +208,7 @@ public sealed class ToolsWindow : Window
         var folder = GameFolder;
         if (folder is null)
         {
-            MessageBox.Show(this, "未找到游戏目录路径");
+            Dialog.Show(this, "未找到游戏目录路径");
             return;
         }
 
@@ -210,7 +219,7 @@ public sealed class ToolsWindow : Window
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(this, "[战局锁] 操作失败：" + ex.Message);
+            Dialog.Show(this, "[战局锁] 操作失败：" + ex.Message);
         }
 
         RefreshLock();
@@ -233,14 +242,14 @@ public sealed class ToolsWindow : Window
         var p = _password.Text.Trim();
         if (p.Length == 0)
         {
-            MessageBox.Show(this, "[战局锁] 操作失败：请输入密码！");
+            Dialog.Show(this, "[战局锁] 操作失败：请输入密码！");
             return;
         }
 
         var list = StoredPasswords();
         if (list.Contains(p))
         {
-            MessageBox.Show(this, "[战局锁] 操作失败：密码已存在！");
+            Dialog.Show(this, "[战局锁] 操作失败：密码已存在！");
             return;
         }
 
@@ -262,9 +271,12 @@ public sealed class ToolsWindow : Window
     }
 
     // ---------------- 防火墙状态 ----------------
-    private Border BuildFirewall() => Ui.Card(Ui.Col(
-        _firewall,
-        Ui.Text("【防火墙规则断网】需要启用当前使用中的防火墙网络；【WFP规则断网】不受影响。", dim: true, size: 11)), "防火墙状态");
+    private Border BuildFirewall()
+    {
+        var card = Ui.Card(_firewall, "防火墙状态");
+        card.ToolTip = "【防火墙规则断网】需要启用当前使用中的防火墙网络；【WFP规则断网】不受影响。";
+        return card;
+    }
 
     private void RefreshFirewall()
     {
@@ -294,9 +306,9 @@ public sealed class ToolsWindow : Window
     private Border BuildLink()
     {
         var s = _host.Settings;
-        var nick = new TextBox { Text = s.GetString(Sec.Tools, "联动昵称"), Width = 140 };
-        var ip = new TextBox { Text = s.GetString(Sec.Tools, "联动IP"), Width = 170 };
-        var port = new TextBox { Text = s.GetInt(Sec.Tools, "房间端口").ToString(), Width = 70 };
+        var nick = new TextBox { Text = s.GetString(Sec.Tools, "联动昵称"), Width = 110 };
+        var ip = new TextBox { Text = s.GetString(Sec.Tools, "联动IP"), Width = 140 };
+        var port = new TextBox { Text = s.GetInt(Sec.Tools, "房间端口").ToString(), Width = 56 };
         nick.LostFocus += (_, _) => s.Set(Sec.Tools, "联动昵称", nick.Text.Trim());
         ip.LostFocus += (_, _) => s.Set(Sec.Tools, "联动IP", ip.Text.Trim());
         port.LostFocus += (_, _) =>
@@ -308,8 +320,8 @@ public sealed class ToolsWindow : Window
         };
         _host.Link.SetBlacklist(s.GetString(Sec.Tools, "黑名单列表").Trim('{', '}').Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
+        var connectInfo = Ui.Row(Ui.Text("昵称"), nick, Ui.Text("IP"), ip, Ui.Text("端口"), port);
         var connect = Ui.Row(
-            Ui.Text("昵称"), nick, Ui.Text("IP"), ip, Ui.Text("端口"), port,
             Ui.Btn("创建房间", () =>
             {
                 try
@@ -318,7 +330,7 @@ public sealed class ToolsWindow : Window
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, ex.Message, "联动");
+                    Dialog.Show(this, ex.Message, "联动");
                 }
             }),
             Ui.Btn("加入房间", async () =>
@@ -334,7 +346,8 @@ public sealed class ToolsWindow : Window
             }),
             Ui.Btn("断开", () => _host.Link.Leave()));
 
-        var actions = Ui.Row(Ui.Text("发起联动："));
+        var actions = new WrapPanel();
+        actions.Children.Add(Ui.Text("联动："));
         foreach (var kind in LinkKinds.All)
         {
             var k = kind;
@@ -367,7 +380,7 @@ public sealed class ToolsWindow : Window
         }));
 
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(180) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
         grid.ColumnDefinitions.Add(new ColumnDefinition());
         var membersPanel = Ui.Col(Ui.Text("当前在线人数：", dim: true), _members);
         Grid.SetColumn(membersPanel, 0);
@@ -376,7 +389,7 @@ public sealed class ToolsWindow : Window
         grid.Children.Add(membersPanel);
         grid.Children.Add(chatPanel);
 
-        return Ui.Card(Ui.Col(connect, _linkStatus, actions, grid), "联动功能");
+        return Ui.Card(Ui.Col(connectInfo, connect, _linkStatus, actions, grid), "联动功能");
     }
 
     private void OnLinkStatus(object? sender, string message) => Dispatcher.BeginInvoke(() =>

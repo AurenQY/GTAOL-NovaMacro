@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Reflection;
 using NovaMacro.Core.Features;
@@ -16,6 +17,10 @@ public sealed class SettingsStore
     private readonly IniDocument _defaults;
     private readonly string? _path;
     private readonly object _saveGate = new();
+
+    // Resolved (file → bundled defaults) raw values. Settings are read on the input-hook thread for
+    // every key press, so lookups must be lock-free and O(1). Invalidated on every write.
+    private readonly ConcurrentDictionary<(string Section, string Key), string?> _cache = new();
 
     public SettingsStore(IniDocument document, string? path = null, IniDocument? defaults = null)
     {
@@ -37,7 +42,6 @@ public sealed class SettingsStore
         if (!File.Exists(path))
         {
             var created = defaults.Clone();
-            created.Set("RegistryBackup", "ACP", "65001");
             var store = new SettingsStore(created, path, defaults);
             store.Save();
             return store;
@@ -60,7 +64,7 @@ public sealed class SettingsStore
 
     public string GetString(string section, string key, string? fallback = null)
     {
-        var value = _document.Get(section, key) ?? _defaults.Get(section, key);
+        var value = _cache.GetOrAdd((section, key), k => _document.Get(k.Section, k.Key) ?? _defaults.Get(k.Section, k.Key));
         if (value is not null)
         {
             return value;
@@ -102,7 +106,17 @@ public sealed class SettingsStore
         }
 
         _document.Set(section, key, value);
+        _cache.TryRemove((section, key), out _);
         Changed?.Invoke(this, new SettingChangedEventArgs(section, key, value));
+    }
+
+    public void Remove(string section, string key)
+    {
+        if (_document.Remove(section, key))
+        {
+            _cache.TryRemove((section, key), out _);
+            Changed?.Invoke(this, new SettingChangedEventArgs(section, key, string.Empty));
+        }
     }
 
     public void SetBool(string section, string key, bool value) => Set(section, key, SettingValues.FromBool(value));
@@ -175,6 +189,7 @@ public sealed class SettingsStore
             _document.Remove(section, key);
         }
 
+        _cache.Clear();
         Changed?.Invoke(this, new SettingChangedEventArgs(section, string.Empty, string.Empty));
     }
 

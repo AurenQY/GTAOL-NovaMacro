@@ -10,7 +10,7 @@ using NovaMacro.Core.Scripting;
 namespace NovaMacro.App.Windows;
 
 /// <summary>自定义宏 — create, edit, categorise and save script macros.</summary>
-public sealed class CustomMacroWindow : Window
+public sealed class CustomMacroWindow : ThemedWindow
 {
     private const string Syntax =
         "语法（每行一条）：\n" +
@@ -35,6 +35,7 @@ public sealed class CustomMacroWindow : Window
     private readonly TextBox _script = new()
     {
         AcceptsReturn = true,
+        VerticalContentAlignment = VerticalAlignment.Top,
         AcceptsTab = true,
         TextWrapping = TextWrapping.NoWrap,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -182,7 +183,7 @@ public sealed class CustomMacroWindow : Window
 
         if (string.IsNullOrWhiteSpace(_name.Text))
         {
-            MessageBox.Show(this, "名称不能为空");
+            Dialog.Show(this, "名称不能为空");
             return;
         }
 
@@ -200,7 +201,7 @@ public sealed class CustomMacroWindow : Window
 
         var path = def.FilePath(_host.DataFolder);
         if (!string.Equals(path, _originalPath, StringComparison.OrdinalIgnoreCase) && File.Exists(path) &&
-            MessageBox.Show(this, "发现有重复的文件，是否覆盖？", "发现文件重复！", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+            !Dialog.Confirm(this, "发现有重复的文件，是否覆盖？", "发现文件重复！"))
         {
             return;
         }
@@ -227,7 +228,7 @@ public sealed class CustomMacroWindow : Window
             return;
         }
 
-        if (MessageBox.Show(this, $"确定删除自定义宏？\n【{_current.Name}】", "删除宏！", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        if (!Dialog.Confirm(this, $"确定删除自定义宏？\n【{_current.Name}】", "删除宏！"))
         {
             return;
         }

@@ -15,23 +15,24 @@ using NovaMacro.Platform.SystemTools;
 namespace NovaMacro.App.Windows;
 
 /// <summary>按键宏设置 — every Settings.ini section rendered from the schema.</summary>
-public sealed class SettingsWindow : Window
+public sealed class SettingsWindow : ThemedWindow
 {
     private const string KeyMapPage = "游戏键位";
     private const string HotkeyPage = "全部热键";
 
     private readonly AppHost _host;
-    private readonly ListBox _sections = new() { Width = 170, Margin = new Thickness(6) };
+    private readonly ListBox _sections = new() { Width = 150, Margin = new Thickness(8, 8, 0, 8), BorderThickness = new Thickness(0) };
     private readonly ContentControl _page = new();
 
     public SettingsWindow(AppHost host, string? section)
     {
         _host = host;
         Title = "按键宏设置";
-        Width = 900;
-        Height = 700;
+        Width = 1120;
+        Height = 690;
         WindowPositions.Restore(this, host.Settings, "设置界面");
-        LocationChanged += (_, _) => WindowPositions.Save(this, host.Settings, "设置界面");
+        Deactivated += (_, _) => WindowPositions.Save(this, host.Settings, "设置界面");
+        Closing += (_, _) => WindowPositions.Save(this, host.Settings, "设置界面");
 
         var pages = SettingsSchema.SectionOrder.Where(s => SettingsSchema.All.Any(d => d.Section == s && !d.Hidden)).ToList();
         pages.Insert(0, HotkeyPage);
@@ -43,15 +44,18 @@ public sealed class SettingsWindow : Window
 
         _sections.SelectionChanged += (_, _) => ShowPage(_sections.SelectedItem as string);
         var dock = new DockPanel();
-        DockPanel.SetDock(_sections, Dock.Left);
-        dock.Children.Add(_sections);
+        var nav = new Border { Background = Ui.Res("Panel"), BorderBrush = Ui.Res("Border"), BorderThickness = new Thickness(0, 0, 1, 0), Child = _sections };
+        _sections.Background = Brushes.Transparent;
+        DockPanel.SetDock(nav, Dock.Left);
         var footer = Ui.Row(
             Ui.Btn("恢复本页默认", ResetPage, tip: "删除本页在 Settings.ini 中的所有值，恢复为默认配置"),
             Ui.Btn("打开ini配置文件", () => Process.Start(new ProcessStartInfo(_host.Settings.FilePath!) { UseShellExecute = true })),
             Ui.Btn("关闭设置", Close, accent: true));
         footer.HorizontalAlignment = HorizontalAlignment.Right;
-        DockPanel.SetDock(footer, Dock.Bottom);
-        dock.Children.Add(footer);
+        var footerBar = new Border { Background = Ui.Res("Panel"), BorderBrush = Ui.Res("Border"), BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(8, 4, 8, 4), Child = footer };
+        DockPanel.SetDock(footerBar, Dock.Bottom);
+        dock.Children.Add(footerBar);
+        dock.Children.Add(nav);
         dock.Children.Add(new ScrollViewer { Content = _page, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(4) });
         Content = dock;
         _sections.SelectedItem = section is not null && pages.Contains(section) ? section : pages[0];
@@ -68,7 +72,7 @@ public sealed class SettingsWindow : Window
         }
 
         var section = Current == KeyMapPage ? Sec.KeyOverrides : Current;
-        if (MessageBox.Show(this, $"确定恢复【{Current}】为默认配置？", "重置", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+        if (Dialog.Confirm(this, $"确定恢复【{Current}】为默认配置？", "重置"))
         {
             _host.Settings.ResetSection(section);
             ShowPage(Current);
@@ -82,8 +86,8 @@ public sealed class SettingsWindow : Window
             return;
         }
 
-        var panel = new StackPanel { Margin = new Thickness(6) };
-        panel.Children.Add(Ui.Text(section, size: 18, weight: FontWeights.Bold));
+        var panel = new StackPanel { Margin = new Thickness(10, 6, 14, 10) };
+        panel.Children.Add(Ui.Text(section, size: 16, weight: FontWeights.SemiBold));
         switch (section)
         {
             case HotkeyPage:
@@ -93,20 +97,21 @@ public sealed class SettingsWindow : Window
                 BuildKeyMap(panel);
                 break;
             default:
-                var grid = Ui.TwoColumns(260);
+                var rows = new List<(UIElement, UIElement)>();
                 foreach (var d in SettingsSchema.All.Where(d => d.Section == section && !d.Hidden))
                 {
                     var label = Ui.Text(d.Label);
-                    label.ToolTip = d.Help;
+                    label.ToolTip = d.Help ?? d.Label;
                     var editor = Editor(d);
                     if (d.Help is not null)
                     {
                         editor.ToolTip = d.Help;
                     }
 
-                    Ui.AddRow(grid, label, editor);
+                    rows.Add((label, editor));
                 }
 
+                var grid = Ui.MultiColumn(rows, rows.Count > 10 ? 2 : 1, 190);
                 panel.Children.Add(grid);
                 BuildExtras(section, panel);
                 break;
@@ -126,7 +131,7 @@ public sealed class SettingsWindow : Window
                 cb.Unchecked += (_, _) => s.SetBool(d.Section, d.Key, false);
                 return cb;
             case SettingKind.Choice:
-                var combo = new ComboBox { MinWidth = 220, HorizontalAlignment = HorizontalAlignment.Left };
+                var combo = new ComboBox { MinWidth = 150 };
                 foreach (var c in d.Choices!)
                 {
                     combo.Items.Add(c);
@@ -142,7 +147,7 @@ public sealed class SettingsWindow : Window
                 };
                 return combo;
             case SettingKind.Key:
-                var keyButton = new Button { Content = KeyNames.GetName(s.GetInt(d.Section, d.Key)), MinWidth = 160, HorizontalAlignment = HorizontalAlignment.Left };
+                var keyButton = new Button { Content = KeyNames.GetName(s.GetInt(d.Section, d.Key)), MinWidth = 120, HorizontalAlignment = HorizontalAlignment.Left };
                 keyButton.Click += (_, _) =>
                 {
                     var hk = HotkeyCaptureWindow.Capture(this, _host, d.Label, singleKey: true);
@@ -154,7 +159,7 @@ public sealed class SettingsWindow : Window
                 };
                 return keyButton;
             case SettingKind.Modifier:
-                var mods = new ComboBox { MinWidth = 220, HorizontalAlignment = HorizontalAlignment.Left };
+                var mods = new ComboBox { MinWidth = 150 };
                 for (var i = 0; i <= 7; i++)
                 {
                     mods.Items.Add(Hotkey.ModifierText((ModifierMask)i));
@@ -166,7 +171,7 @@ public sealed class SettingsWindow : Window
             case SettingKind.Color:
                 var colorRef = s.GetInt(d.Section, d.Key);
                 var swatch = new Border { Width = 28, Height = 20, Margin = new Thickness(3), BorderBrush = Ui.Res("Border"), BorderThickness = new Thickness(1) };
-                var colorBox = new TextBox { Text = colorRef.ToString(), Width = 120 };
+                var colorBox = new TextBox { Text = colorRef.ToString(), Width = 90 };
                 void Paint()
                 {
                     if (int.TryParse(colorBox.Text, out var v))
@@ -199,7 +204,7 @@ public sealed class SettingsWindow : Window
                 });
                 return Ui.Row(swatch, colorBox, pick);
             case SettingKind.Int:
-                var num = new TextBox { Text = s.GetInt(d.Section, d.Key).ToString(), Width = 120, HorizontalAlignment = HorizontalAlignment.Left };
+                var num = new TextBox { Text = s.GetInt(d.Section, d.Key).ToString(), Width = 90, HorizontalAlignment = HorizontalAlignment.Left };
                 num.LostFocus += (_, _) =>
                 {
                     if (int.TryParse(num.Text, out var v))
@@ -211,7 +216,7 @@ public sealed class SettingsWindow : Window
                 };
                 return num;
             default:
-                var text = new TextBox { Text = s.GetString(d.Section, d.Key), MinWidth = 300, TextWrapping = TextWrapping.Wrap };
+                var text = new TextBox { Text = s.GetString(d.Section, d.Key), MinWidth = 120 };
                 text.LostFocus += (_, _) => s.Set(d.Section, d.Key, text.Text);
                 return text;
         }
@@ -220,11 +225,11 @@ public sealed class SettingsWindow : Window
     private void BuildHotkeys(StackPanel panel)
     {
         panel.Children.Add(Ui.Text("点击按钮修改热键，右键恢复默认。小工具热键需要在【小工具配置】中启用。", dim: true));
-        var grid = Ui.TwoColumns(200);
+        var rows = new List<(UIElement, UIElement)>();
         foreach (var f in FeatureCatalog.All.Where(f => f.HotkeySection is not null))
         {
             var feature = f;
-            var button = new Button { Content = _host.Settings.GetHotkey(feature).ToString(), MinWidth = 200, HorizontalAlignment = HorizontalAlignment.Left, ToolTip = feature.Help };
+            var button = new Button { Content = _host.Settings.GetHotkey(feature).ToString(), MinWidth = 160, HorizontalAlignment = HorizontalAlignment.Left, ToolTip = feature.Help };
             button.Click += (_, _) =>
             {
                 var hk = HotkeyCaptureWindow.Capture(this, _host, "设置热键 - " + feature.Name);
@@ -239,10 +244,10 @@ public sealed class SettingsWindow : Window
                 _host.Settings.SetHotkey(feature, feature.DefaultHotkey);
                 button.Content = feature.DefaultHotkey.ToString();
             };
-            Ui.AddRow(grid, Ui.Text(feature.Name), button);
+            rows.Add((Ui.Text(feature.Name), button));
         }
 
-        panel.Children.Add(grid);
+        panel.Children.Add(Ui.MultiColumn(rows, 3, 100));
     }
 
     private void BuildKeyMap(StackPanel panel)
@@ -250,7 +255,7 @@ public sealed class SettingsWindow : Window
         var map = _host.KeyMap;
         panel.Children.Add(Ui.Text(map.Source.Length > 0 ? "读取于文件夹：" + map.Source : "未找到 GTA 键位文件（control\\user.xml），当前使用默认键位", dim: true));
         panel.Children.Add(Ui.Text("如游戏内修改过键位，可在此覆盖；右键按钮取消覆盖。", dim: true));
-        var grid = Ui.TwoColumns(200);
+        var rows = new List<(UIElement, UIElement)>();
         foreach (var info in GameActions.All)
         {
             var action = info;
@@ -258,7 +263,7 @@ public sealed class SettingsWindow : Window
             var button = new Button
             {
                 Content = KeyNames.GetName(map[action.Action]) + (overridden ? "  (覆盖)" : string.Empty),
-                MinWidth = 180,
+                MinWidth = 120,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 ToolTip = action.GtaInput,
             };
@@ -273,11 +278,10 @@ public sealed class SettingsWindow : Window
             };
             button.MouseRightButtonUp += (_, _) =>
             {
-                _host.Settings.Document.Remove(Sec.KeyOverrides, action.Action.ToString());
-                _host.ReloadKeyMap();
+                _host.Settings.Remove(Sec.KeyOverrides, action.Action.ToString());
                 ShowPage(KeyMapPage);
             };
-            Ui.AddRow(grid, Ui.Text(action.DisplayName), button);
+            rows.Add((Ui.Text(action.DisplayName), button));
         }
 
         panel.Children.Add(Ui.Row(Ui.Btn("重新读取游戏键位", () =>
@@ -285,7 +289,7 @@ public sealed class SettingsWindow : Window
             _host.ReloadKeyMap();
             ShowPage(KeyMapPage);
         })));
-        panel.Children.Add(grid);
+        panel.Children.Add(Ui.MultiColumn(rows, 3, 120));
     }
 
     private void BuildExtras(string section, StackPanel panel)
@@ -303,7 +307,7 @@ public sealed class SettingsWindow : Window
                         var found = GtaLocator.Find(_host.Game);
                         if (found is null)
                         {
-                            MessageBox.Show(this, "[游戏文件夹路径] 未能找到游戏目录路径！请检查是否没有运行、下载游戏，也可手动修改路径！");
+                            Dialog.Show(this, "[游戏文件夹路径] 未能找到游戏目录路径！请检查是否没有运行、下载游戏，也可手动修改路径！");
                             return;
                         }
 
@@ -315,7 +319,7 @@ public sealed class SettingsWindow : Window
                 panel.Children.Add(Ui.Row(Ui.Btn("应用开机启动设置", () =>
                 {
                     AutoStart.Set(_host.Settings.GetBool(Sec.Switches, "启用开机启动"), Environment.ProcessPath!);
-                    MessageBox.Show(this, "设置完成！");
+                    Dialog.Show(this, "设置完成！");
                 })));
                 break;
             case Sec.Crosshair:
@@ -339,7 +343,7 @@ public sealed class SettingsWindow : Window
                 Ui.Row(
                     Ui.Btn("读取最近加入的战局链接", () =>
                     {
-                        MessageBox.Show(this,
+                        Dialog.Show(this,
                             "【请勿马上关闭本窗口，仔细阅读↓】\n该窗口正在等待读取，你需要在相应的Steam好友或组中手动加入玩家战局，之后即可点击 [确定] 来进行读取！",
                             "等待读取【" + key + "】战局链接...");
                         if (feature?.ReadLatestLink(key) is not null)
@@ -352,7 +356,7 @@ public sealed class SettingsWindow : Window
                         var parsed = SteamJoinLink.FromText(Clipboard.ContainsText() ? Clipboard.GetText() : null, DateTime.Now, key);
                         if (parsed is null)
                         {
-                            MessageBox.Show(this, "剪贴版里面找不到完整战局链接\n链接格式（包含即可）：steam://rungame/[......]==", "操作失败");
+                            Dialog.Show(this, "剪贴版里面找不到完整战局链接\n链接格式（包含即可）：steam://rungame/[......]==", "操作失败");
                             return;
                         }
 
@@ -364,7 +368,7 @@ public sealed class SettingsWindow : Window
                         if (link is not null)
                         {
                             Clipboard.SetText(link.Url);
-                            MessageBox.Show(this, "已将战局链接复制到剪贴版中", "操作完成");
+                            Dialog.Show(this, "已将战局链接复制到剪贴版中", "操作完成");
                         }
                     }),
                     Ui.Btn("测试加入", () =>
@@ -390,7 +394,7 @@ public sealed class SettingsWindow : Window
     {
         if (!Clipboard.ContainsImage())
         {
-            MessageBox.Show(this, "剪贴板中没有图片数据！\n[√] 截图后直接复制的图片数据\n[×] 桌面、文件资源管理器上的图片文件");
+            Dialog.Show(this, "剪贴板中没有图片数据！\n[√] 截图后直接复制的图片数据\n[×] 桌面、文件资源管理器上的图片文件");
             return;
         }
 
@@ -400,7 +404,7 @@ public sealed class SettingsWindow : Window
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         using var stream = File.Create(path);
         encoder.Save(stream);
-        MessageBox.Show(this, "已保存至【" + path + "】");
+        Dialog.Show(this, "已保存至【" + path + "】");
     }
 
     private void BrowseGameFolder()
@@ -413,7 +417,7 @@ public sealed class SettingsWindow : Window
 
         if (GtaInstall.FindExecutable(dialog.SelectedPath) is null)
         {
-            MessageBox.Show(this, "[游戏文件夹路径] 错误：该目录下没有游戏文件！");
+            Dialog.Show(this, "[游戏文件夹路径] 错误：该目录下没有游戏文件！");
             return;
         }
 

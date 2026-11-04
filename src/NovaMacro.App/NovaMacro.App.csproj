@@ -7,12 +7,22 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\NovaMacro.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- Precompile so the input hook path is not JIT-compiled on the first key presses. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <TieredPGO>true</TieredPGO>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\NovaMacro.Core\NovaMacro.Core.csproj" />
     <ProjectReference Include="..\NovaMacro.Platform\NovaMacro.Platform.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\NovaMacro.ico" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />

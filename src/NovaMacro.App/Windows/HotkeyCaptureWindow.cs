@@ -7,7 +7,7 @@ using NovaMacro.Core.Input;
 namespace NovaMacro.App.Windows;
 
 /// <summary>"等待按键" dialog: captures keyboard, mouse or gamepad input through the global hook.</summary>
-public sealed class HotkeyCaptureWindow : Window
+public sealed class HotkeyCaptureWindow : ThemedWindow
 {
     private readonly AppHost _host;
     private readonly bool _singleKey;

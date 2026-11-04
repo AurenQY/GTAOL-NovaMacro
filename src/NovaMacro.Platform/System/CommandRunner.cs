@@ -12,14 +12,14 @@ public readonly record struct CommandResult(int ExitCode, string Output)
 /// <summary>Runs hidden console tools (netsh, powershell) and captures their output.</summary>
 public static class CommandRunner
 {
-    public static bool IsElevated
+    private static readonly Lazy<bool> Elevated = new(() =>
     {
-        get
-        {
-            using var identity = WindowsIdentity.GetCurrent();
-            return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-        }
-    }
+        using var identity = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    });
+
+    /// <summary>Process elevation never changes while running; computed once.</summary>
+    public static bool IsElevated => Elevated.Value;
 
     public static CommandResult Run(string file, string arguments, int timeoutMs = 15000)
     {

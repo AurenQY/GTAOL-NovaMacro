@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
 using NovaMacro.Core.Game;
 using NovaMacro.Core.Imaging;
 using NovaMacro.Core.Runtime;
@@ -7,127 +9,62 @@ using static NovaMacro.Platform.Native.User32;
 
 namespace NovaMacro.Platform.Game;
 
-/// <summary>Tracks the GTA V process (GTA5.exe / GTA5_Enhanced.exe) and its main window.</summary>
-public sealed class WindowsGameWindow : IGameWindow
+/// <summary>
+/// Tracks the GTA V process (GTA5.exe / GTA5_Enhanced.exe) and its main window.
+/// Performance rules: property getters never enumerate processes and never block (they are called
+/// from the system-wide keyboard hook on every key press); only <see cref="Refresh"/> (1 s timer)
+/// does discovery, and it finds the game by window class instead of enumerating all processes.
+/// </summary>
+public sealed partial class WindowsGameWindow : IGameWindow, IDisposable
 {
-    private readonly object _gate = new();
-    private int _pid;
-    private nint _hwnd;
-    private uint _threadId;
-    private string? _path;
-    private GtaEdition _edition;
-    private long _lastScan;
-    private nint _lastForeignForeground;
+    private const string GtaWindowClass = "grcWindow";
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+    private const uint Synchronize = 0x00100000;
+    private const uint WaitTimeout = 0x00000102;
+
+    private readonly object _refreshGate = new();
+    private volatile int _pid;
+    private long _hwnd;
+    private volatile uint _threadId;
+    private volatile string? _path;
+    private volatile GtaEdition _edition;
+    private nint _processHandle;
+    private long _lastFullScan = long.MinValue / 2;
 
     public event EventHandler? GameExited;
 
     public event EventHandler? GameStarted;
 
-    public bool IsRunning
-    {
-        get
-        {
-            EnsureFresh();
-            lock (_gate)
-            {
-                return _pid != 0;
-            }
-        }
-    }
+    public bool IsRunning => _pid != 0;
 
     public bool IsForeground
     {
         get
         {
+            var pid = _pid;
+            if (pid == 0)
+            {
+                return false;
+            }
+
             var fg = GetForegroundWindow();
             if (fg == 0)
             {
                 return false;
             }
 
-            GetWindowThreadProcessId(fg, out var pid);
-            lock (_gate)
-            {
-                if (_pid != 0 && pid == _pid)
-                {
-                    return true;
-                }
-            }
-
-            // Check an unknown foreground process once per window (this runs on every hooked key).
-            if (fg == _lastForeignForeground)
-            {
-                return false;
-            }
-
-            try
-            {
-                using var p = Process.GetProcessById((int)pid);
-                if (GtaInstall.ProcessNames.Contains(p.ProcessName, StringComparer.OrdinalIgnoreCase))
-                {
-                    Refresh();
-                    return true;
-                }
-            }
-            catch (ArgumentException)
-            {
-            }
-            catch (InvalidOperationException)
-            {
-            }
-
-            _lastForeignForeground = fg;
-            return false;
+            GetWindowThreadProcessId(fg, out var fgPid);
+            return fgPid == (uint)pid;
         }
     }
 
-    public GtaEdition Edition
-    {
-        get
-        {
-            EnsureFresh();
-            lock (_gate)
-            {
-                return _edition;
-            }
-        }
-    }
+    public GtaEdition Edition => _edition;
 
-    public int ProcessId
-    {
-        get
-        {
-            EnsureFresh();
-            lock (_gate)
-            {
-                return _pid;
-            }
-        }
-    }
+    public int ProcessId => _pid;
 
-    public nint Handle
-    {
-        get
-        {
-            EnsureFresh();
-            lock (_gate)
-            {
-                return _hwnd;
-            }
-        }
-    }
+    public nint Handle => (nint)Interlocked.Read(ref _hwnd);
 
-    public string? ExecutablePath
-    {
-        get
-        {
-            EnsureFresh();
-            lock (_gate)
-            {
-                return _path;
-            }
-        }
-    }
+    public string? ExecutablePath => _path;
 
     public ScreenRect ClientBounds
     {
@@ -158,12 +95,7 @@ public sealed class WindowsGameWindow : IGameWindow
     {
         get
         {
-            uint thread;
-            lock (_gate)
-            {
-                thread = _threadId;
-            }
-
+            var thread = _threadId;
             if (thread == 0)
             {
                 return true;
@@ -176,56 +108,26 @@ public sealed class WindowsGameWindow : IGameWindow
 
     public bool Refresh()
     {
-        var wasRunning = _pid != 0;
-        Process? found = null;
-        foreach (var name in GtaInstall.ProcessNames)
+        bool wasRunning;
+        bool isRunning;
+        lock (_refreshGate)
         {
-            var candidates = Process.GetProcessesByName(name);
-            found = candidates.FirstOrDefault();
-            foreach (var other in candidates.Skip(1))
+            wasRunning = _pid != 0;
+            if (wasRunning && IsAlive())
             {
-                other.Dispose();
+                var hwnd = Handle;
+                if (hwnd == 0 || !IsWindow(hwnd))
+                {
+                    AttachWindow(FindMainWindow((uint)_pid));
+                }
+
+                return true;
             }
 
-            if (found is not null)
-            {
-                break;
-            }
+            Detach();
+            isRunning = Discover();
         }
 
-        _lastForeignForeground = 0;
-        lock (_gate)
-        {
-            _lastScan = Environment.TickCount64;
-            if (found is null)
-            {
-                _pid = 0;
-                _hwnd = 0;
-                _threadId = 0;
-                _edition = GtaEdition.Unknown;
-            }
-            else
-            {
-                _pid = found.Id;
-                _edition = GtaInstall.EditionFromExe(found.ProcessName);
-                try
-                {
-                    _path = found.MainModule?.FileName ?? _path;
-                }
-                catch (System.ComponentModel.Win32Exception)
-                {
-                }
-                catch (InvalidOperationException)
-                {
-                }
-
-                _hwnd = FindMainWindow((uint)found.Id);
-                _threadId = _hwnd != 0 ? GetWindowThreadProcessId(_hwnd, out _) : 0;
-                found.Dispose();
-            }
-        }
-
-        var isRunning = _pid != 0;
         if (wasRunning && !isRunning)
         {
             GameExited?.Invoke(this, EventArgs.Empty);
@@ -259,18 +161,110 @@ public sealed class WindowsGameWindow : IGameWindow
         AttachThreadInput(me, fgThread, false);
     }
 
-    private void EnsureFresh()
+    public void Dispose()
     {
-        long last;
-        lock (_gate)
+        lock (_refreshGate)
         {
-            last = _lastScan;
+            Detach();
+        }
+    }
+
+    private bool Discover()
+    {
+        // Cheap: look for the RAGE engine window class.
+        var hwnd = FindWindowW(GtaWindowClass, null);
+        while (hwnd != 0)
+        {
+            GetWindowThreadProcessId(hwnd, out var pid);
+            if (TryAttach(pid, hwnd))
+            {
+                return true;
+            }
+
+            hwnd = FindWindowExW(0, hwnd, GtaWindowClass, null);
         }
 
-        if (Environment.TickCount64 - last > 1500)
+        // Rare fallback (e.g. window not created yet): full process scan at most every 10 s.
+        var now = Environment.TickCount64;
+        if (now - _lastFullScan < 10_000)
         {
-            Refresh();
+            return false;
         }
+
+        _lastFullScan = now;
+        foreach (var name in GtaInstall.ProcessNames)
+        {
+            foreach (var p in Process.GetProcessesByName(name))
+            {
+                using (p)
+                {
+                    if (_pid == 0 && TryAttach((uint)p.Id, 0))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryAttach(uint pid, nint hwnd)
+    {
+        if (pid == 0)
+        {
+            return false;
+        }
+
+        var handle = Kernel32.OpenProcess(ProcessQueryLimitedInformation | Synchronize, false, pid);
+        if (handle == 0)
+        {
+            return false;
+        }
+
+        var path = QueryImagePath(handle);
+        var edition = GtaInstall.EditionFromExe(path);
+        if (edition == GtaEdition.Unknown)
+        {
+            Kernel32.CloseHandle(handle);
+            return false;
+        }
+
+        _processHandle = handle;
+        _path = path;
+        _edition = edition;
+        _pid = (int)pid;
+        AttachWindow(hwnd != 0 ? hwnd : FindMainWindow(pid));
+        return true;
+    }
+
+    private void AttachWindow(nint hwnd)
+    {
+        Interlocked.Exchange(ref _hwnd, hwnd);
+        _threadId = hwnd != 0 ? GetWindowThreadProcessId(hwnd, out _) : 0;
+    }
+
+    private bool IsAlive() => _processHandle != 0 && WaitForSingleObject(_processHandle, 0) == WaitTimeout;
+
+    private void Detach()
+    {
+        if (_processHandle != 0)
+        {
+            Kernel32.CloseHandle(_processHandle);
+            _processHandle = 0;
+        }
+
+        _pid = 0;
+        _threadId = 0;
+        _edition = GtaEdition.Unknown;
+        Interlocked.Exchange(ref _hwnd, 0);
+    }
+
+    private static string? QueryImagePath(nint handle)
+    {
+        var buffer = new StringBuilder(1024);
+        var size = buffer.Capacity;
+        return QueryFullProcessImageNameW(handle, 0, buffer, ref size) ? buffer.ToString(0, size) : null;
     }
 
     private static nint FindMainWindow(uint pid)
@@ -299,4 +293,14 @@ public sealed class WindowsGameWindow : IGameWindow
         }, 0);
         return best;
     }
+
+    [LibraryImport("kernel32.dll")]
+    private static partial uint WaitForSingleObject(nint handle, uint milliseconds);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageNameW(nint process, int flags, StringBuilder name, ref int size);
+
+    [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint FindWindowExW(nint parent, nint childAfter, string? className, string? windowName);
 }

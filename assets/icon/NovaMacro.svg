@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>NovaMacro</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#62A2FF"/>
+      <stop offset="1" stop-color="#2A52DD"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- tile -->
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#gloss)"/>
+  <rect x="9.5" y="9.5" width="237" height="237" rx="54.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="3"/>
+  <!-- N: bars and diagonal share the same stroke weight -->
+  <path d="M64 192V64h42l50 76V64h36v128h-42l-50-76v76z" fill="#FFFFFF"/>
+</svg>
